@@ -1,0 +1,7 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "B&B plan selector"
+handle = "bb-subscription-selector"
+uid = "784ec90f-b65e-4dd6-84ce-a02914a3b19fb2a7b903"
+type = "theme"
