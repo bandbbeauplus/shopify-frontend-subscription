@@ -75,11 +75,14 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
 export default function ShipmentsPage() {
   const { shipments } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
+  const dueForExport = shipments.some(
+    (shipment) => shipment.shipment_status === "pending" && shipment.scheduled_ship_date <= new Date().toISOString().slice(0, 10),
+  );
   return (
     <s-page heading="Shipments">
-      <s-button slot="primary-action" href="/app/shipments/spx-csv">
+      {dueForExport ? <s-button slot="primary-action" href="/app/shipments/spx-csv">
         Download SPX CSV
-      </s-button>
+      </s-button> : null}
       <Form className={styles.toolbar} method="get">
         <label className={styles.field}>Customer email<input name="customer_email" placeholder="Search email" type="search" /></label>
         <label className={styles.field}>Status<select defaultValue="" name="status"><option value="">All statuses</option>{statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select></label>
