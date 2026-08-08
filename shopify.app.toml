@@ -2,7 +2,7 @@
 
 client_id = "3aa335e4f0604d62ef88bb6b32c7c1f0"
 name = "b&b subscription dashboard"
-application_url = "https://shopify.dev/apps/default-app-home"
+application_url = "https://shopify-frontend-subscription.onrender.com"
 embedded = true
 
 [build]
@@ -10,7 +10,7 @@ automatically_update_urls_on_dev = true
 include_config_on_deploy = true
 
 [webhooks]
-api_version = "2026-10"
+api_version = "2026-07"
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/scopes_update"
@@ -22,7 +22,7 @@ api_version = "2026-10"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = ""
+scopes = "read_products"
 
 [auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+redirect_urls = [ "https://shopify-frontend-subscription.onrender.com/auth/callback" ]

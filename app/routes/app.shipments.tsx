@@ -77,6 +77,9 @@ export default function ShipmentsPage() {
   const navigation = useNavigation();
   return (
     <s-page heading="Shipments">
+      <s-button slot="primary-action" href="/app/shipments/spx-csv">
+        Download SPX CSV
+      </s-button>
       <Form className={styles.toolbar} method="get">
         <label className={styles.field}>Customer email<input name="customer_email" placeholder="Search email" type="search" /></label>
         <label className={styles.field}>Status<select defaultValue="" name="status"><option value="">All statuses</option>{statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select></label>
