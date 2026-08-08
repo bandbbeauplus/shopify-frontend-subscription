@@ -30,10 +30,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = String(form.get("intent") || "");
   if (!Number.isInteger(id) || id < 1) throw new Response("Invalid shipment ID", { status: 400 });
 
-  if (intent === "create_spx") {
-    const result = await backendRequest<{ tracking_number: string }>(`/api/shipments/${id}/create-spx`, { method: "POST" });
-    return { ok: true, message: `SPX entry created: ${result.tracking_number}` };
-  }
   if (intent === "update_status") {
     const status = String(form.get("status"));
     if (!statuses.includes(status as ShipmentStatus)) throw new Response("Invalid status", { status: 400 });
@@ -53,11 +49,7 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
 
   if (shipment.shipment_status === "pending" && !shipment.spx_tracking_number) {
     return (
-      <fetcher.Form method="post">
-        <input type="hidden" name="id" value={shipment.id} />
-        <input type="hidden" name="intent" value="create_spx" />
-        <button className={styles.button} disabled={busy} type="submit">Create SPX</button>
-      </fetcher.Form>
+      <a className={styles.button} href={`/app/shipments/spx-csv/${shipment.id}`}>Download SPX CSV</a>
     );
   }
   return (
