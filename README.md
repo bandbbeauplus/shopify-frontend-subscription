@@ -12,7 +12,7 @@ The current setup is intended for one store. The backend uses a shared API key a
 
 - Operations overview with due, upcoming, active, and delivered totals
 - Shipment search by email, status, and date range
-- Bulk SPX CSV download for pending shipments due today
+- Bulk SPX Excel-template download for pending shipments due today
 - SPX entry creation attempt and manual shipment status changes
 - Subscription search and cancellation
 - Server-only proxy to the existing Express API
@@ -70,7 +70,7 @@ The backend must define `DASHBOARD_API_KEY` with the exact same value before its
 - The backend currently recognizes plans by parsing variant titles. Keep plan titles in the expected `1`, `3`, `6`, or `12` month format until variant metadata or IDs are used instead.
 - The order webhook should be configured to receive only valid paid orders; payment-status validation is not yet enforced by the backend.
 - Automated tests are not currently included.
-- The SPX CSV download is a neutral draft format and must be matched to SPX's current upload template before live use.
+- SPX downloads use the official Philippines mass-order `.xlsx` template. Confirm the configured parcel weight, dimensions, item type, and payment method before live use.
 
 ## Verification
 

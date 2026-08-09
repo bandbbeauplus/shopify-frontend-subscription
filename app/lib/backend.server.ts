@@ -34,17 +34,17 @@ export async function backendRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export async function backendTextRequest(
+export async function backendBinaryRequest(
   path: string,
   init: RequestInit = {},
-): Promise<{ body: string; headers: Headers }> {
+): Promise<{ base64: string; headers: Headers }> {
   if (!apiUrl) configurationError("SUBSCRIPTION_API_URL");
   if (!apiKey) configurationError("SUBSCRIPTION_API_KEY");
 
   const response = await fetch(new URL(path, apiUrl), {
     ...init,
     headers: {
-      Accept: "text/csv",
+      Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "X-Dashboard-Key": apiKey!,
       ...init.headers,
     },
@@ -56,5 +56,6 @@ export async function backendTextRequest(
     throw new Response(message, { status: response.status });
   }
 
-  return { body: await response.text(), headers: response.headers };
+  const bytes = Buffer.from(await response.arrayBuffer());
+  return { base64: bytes.toString("base64"), headers: response.headers };
 }
