@@ -15,6 +15,7 @@ The current setup is intended for one store. The backend uses a shared API key a
 - Bulk SPX Excel-template download for pending shipments due today
 - SPX tracking confirmation after a mass-order Excel import
 - Optional Shopify fulfillment creation with SPX tracking
+- Retryable **Fulfill in Shopify** action for tracked, ready-to-ship shipments
 - Manual shipment status changes and SPX tracking links
 - Subscription search and cancellation
 - Server-only proxy to the existing Express API

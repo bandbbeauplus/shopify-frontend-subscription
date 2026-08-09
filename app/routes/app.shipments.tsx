@@ -76,6 +76,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: true, message: "SPX tracking saved as ready to ship" };
   }
 
+  if (intent === "fulfill_shopify") {
+    const trackingNumber = String(form.get("tracking_number") || "").trim();
+    const orderId = String(form.get("order_id") || "");
+    if (!/^[A-Za-z0-9-]{4,50}$/.test(trackingNumber)) {
+      throw new Response("Shipment has no valid SPX tracking number", { status: 400 });
+    }
+
+    try {
+      await createShopifyFulfillment(admin, orderId, trackingNumber);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown Shopify error";
+      return { ok: false, message: `Shopify was not fulfilled: ${detail}` };
+    }
+
+    try {
+      await backendRequest(`/api/shipments/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "shipped" }),
+      });
+    } catch {
+      return { ok: false, message: "Shopify is fulfilled, but the internal shipment status could not be updated" };
+    }
+
+    return { ok: true, message: "Shopify order marked fulfilled with SPX tracking" };
+  }
+
   if (intent === "update_status") {
     const status = String(form.get("status"));
     if (!statuses.includes(status as ShipmentStatus)) throw new Response("Invalid status", { status: 400 });
@@ -145,16 +171,25 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
       </fetcher.Form>
     </div>;
   }
-  return (
+  return <div className={styles.confirmStack}>
+    {shipment.shipment_status === "ready_to_ship" && shipment.spx_tracking_number ? (
+      <fetcher.Form method="post">
+        <input type="hidden" name="id" value={shipment.id} />
+        <input type="hidden" name="order_id" value={shipment.order_id} />
+        <input type="hidden" name="tracking_number" value={shipment.spx_tracking_number} />
+        <input type="hidden" name="intent" value="fulfill_shopify" />
+        <button className={styles.button} disabled={busy} type="submit">Fulfill in Shopify</button>
+      </fetcher.Form>
+    ) : null}
     <fetcher.Form className={styles.tableActions} method="post">
-      <input type="hidden" name="id" value={shipment.id} />
-      <input type="hidden" name="intent" value="update_status" />
-      <select aria-label={`Status for shipment ${shipment.id}`} defaultValue={shipment.shipment_status} name="status">
-        {statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
-      </select>
-      <button className={styles.buttonSecondary} disabled={busy} type="submit">Save</button>
-    </fetcher.Form>
-  );
+        <input type="hidden" name="id" value={shipment.id} />
+        <input type="hidden" name="intent" value="update_status" />
+        <select aria-label={`Status for shipment ${shipment.id}`} defaultValue={shipment.shipment_status} name="status">
+          {statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
+        </select>
+        <button className={styles.buttonSecondary} disabled={busy} type="submit">Save</button>
+      </fetcher.Form>
+  </div>;
 }
 
 export default function ShipmentsPage() {
