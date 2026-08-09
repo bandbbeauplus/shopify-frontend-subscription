@@ -5,6 +5,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { backendBinaryRequest, backendRequest } from "../lib/backend.server";
+import { createShopifyFulfillment } from "../lib/shopifyFulfillment.server";
 import type { Shipment, ShipmentStatus } from "../lib/types";
 import { EmptyState, formatDate, StatusBadge } from "../components/AdminUi";
 import styles from "../styles/admin.module.css";
@@ -24,7 +25,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
   const form = await request.formData();
   const intent = String(form.get("intent") || "");
 
@@ -43,6 +44,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const disposition = result.headers.get("content-disposition") || "";
     const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `spx-shipment-${id}.xlsx`;
     return { ok: true, workbook: result.base64, filename };
+  }
+
+  if (intent === "confirm_spx") {
+    const trackingNumber = String(form.get("tracking_number") || "").trim();
+    if (!/^[A-Za-z0-9-]{4,50}$/.test(trackingNumber)) {
+      throw new Response("Enter a valid SPX tracking number", { status: 400 });
+    }
+    const markShopifyFulfilled = form.get("mark_shopify_fulfilled") === "yes";
+
+    await backendRequest(`/api/shipments/${id}/confirm-spx`, {
+      method: "POST",
+      body: JSON.stringify({ tracking_number: trackingNumber, status: "ready_to_ship" }),
+    });
+
+    if (markShopifyFulfilled) {
+      const orderId = String(form.get("order_id") || "");
+      try {
+        await createShopifyFulfillment(admin, orderId, trackingNumber);
+        await backendRequest(`/api/shipments/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "shipped" }),
+        });
+        return { ok: true, message: "SPX tracking saved and Shopify order marked fulfilled" };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Unknown Shopify error";
+        return { ok: false, message: `SPX tracking saved as ready to ship, but Shopify was not fulfilled: ${detail}` };
+      }
+    }
+
+    return { ok: true, message: "SPX tracking saved as ready to ship" };
   }
 
   if (intent === "update_status") {
@@ -98,7 +129,21 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
   }, [fetcher.data, shopify]);
 
   if (shipment.shipment_status === "pending" && !shipment.spx_tracking_number) {
-    return <XlsxDownloadButton id={shipment.id} label="Download SPX Excel" />;
+    return <div className={styles.confirmStack}>
+      <XlsxDownloadButton id={shipment.id} label="Download SPX Excel" />
+      <fetcher.Form className={styles.confirmForm} method="post">
+        <input type="hidden" name="id" value={shipment.id} />
+        <input type="hidden" name="order_id" value={shipment.order_id} />
+        <input type="hidden" name="intent" value="confirm_spx" />
+        <input aria-label={`SPX tracking for shipment ${shipment.id}`} name="tracking_number" placeholder="SPX tracking number" required />
+        <label className={styles.checkField}>
+          <input defaultChecked={shipment.total_shipments === 1} name="mark_shopify_fulfilled" type="checkbox" value="yes" />
+          Mark Shopify fulfilled
+        </label>
+        {shipment.total_shipments > 1 ? <small>Only check when this Shopify line should be fully fulfilled.</small> : null}
+        <button className={styles.buttonSecondary} disabled={busy} type="submit">Confirm SPX order</button>
+      </fetcher.Form>
+    </div>;
   }
   return (
     <fetcher.Form className={styles.tableActions} method="post">
@@ -139,7 +184,7 @@ export default function ShipmentsPage() {
               <td><strong>{shipment.customer_name}</strong><small>{shipment.customer_email}</small></td>
               <td><strong>{shipment.shipment_number} of {shipment.total_shipments}</strong><small>{shipment.product_name}</small></td>
               <td>{formatDate(shipment.scheduled_ship_date)}</td>
-              <td>{shipment.spx_tracking_number || "Not created"}</td>
+              <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href="https://spx.ph/track" rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not created"}</td>
               <td><StatusBadge status={shipment.shipment_status} /></td>
               <td><ShipmentActions shipment={shipment} /></td>
             </tr>)}</tbody>
