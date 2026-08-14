@@ -6,7 +6,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { backendBinaryRequest, backendRequest } from "../lib/backend.server";
 import { createShopifyFulfillment } from "../lib/shopifyFulfillment.server";
-import type { Shipment, ShipmentStatus } from "../lib/types";
+import type { IntegrationConfig, Shipment, ShipmentStatus } from "../lib/types";
 import { EmptyState, formatDate, StatusBadge } from "../components/AdminUi";
 import styles from "../styles/admin.module.css";
 
@@ -21,7 +21,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (value) query.set(key, value);
   }
   const suffix = query.size ? `?${query.toString()}` : "";
-  return { shipments: await backendRequest<Shipment[]>(`/api/shipments${suffix}`) };
+  const [shipments, integration] = await Promise.all([
+    backendRequest<Shipment[]>(`/api/shipments${suffix}`),
+    backendRequest<IntegrationConfig>("/api/shipments/integration-config"),
+  ]);
+  return { shipments, integration };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -39,6 +43,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const id = Number(form.get("id"));
   if (!Number.isInteger(id) || id < 1) throw new Response("Invalid shipment ID", { status: 400 });
 
+  if (intent === "release_to_oms") {
+    await backendRequest(`/api/shipments/${id}/release-to-oms`, { method: "POST" });
+    return { ok: true, message: "Shipment released to OMS" };
+  }
+
+  if (intent === "sync_oms") {
+    const result = await backendRequest<{ shipment: Shipment }>(`/api/shipments/${id}/sync-oms`, { method: "POST" });
+    return { ok: true, message: `Warehouse status: ${result.shipment.warehouse_status.replaceAll("_", " ")}` };
+  }
+
+  if (intent === "send_awb_to_oms") {
+    await backendRequest(`/api/shipments/${id}/send-awb-to-oms`, { method: "POST" });
+    return { ok: true, message: "SPX AWB sent to the warehouse" };
+  }
+
   if (intent === "download_spx_xlsx") {
     const result = await backendBinaryRequest(`/api/shipments/${id}/spx-xlsx`);
     const disposition = result.headers.get("content-disposition") || "";
@@ -51,29 +70,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!/^[A-Za-z0-9-]{4,50}$/.test(trackingNumber)) {
       throw new Response("Enter a valid SPX tracking number", { status: 400 });
     }
-    const markShopifyFulfilled = form.get("mark_shopify_fulfilled") === "yes";
-
     await backendRequest(`/api/shipments/${id}/confirm-spx`, {
       method: "POST",
-      body: JSON.stringify({ tracking_number: trackingNumber, status: "ready_to_ship" }),
+      body: JSON.stringify({
+        tracking_number: trackingNumber,
+        awb_url: String(form.get("awb_url") || "").trim() || null,
+        status: "ready_to_ship",
+      }),
     });
 
-    if (markShopifyFulfilled) {
-      const orderId = String(form.get("order_id") || "");
-      try {
-        await createShopifyFulfillment(admin, orderId, trackingNumber);
-        await backendRequest(`/api/shipments/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ status: "shipped" }),
-        });
-        return { ok: true, message: "SPX tracking saved and Shopify order marked fulfilled" };
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : "Unknown Shopify error";
-        return { ok: false, message: `SPX tracking saved as ready to ship, but Shopify was not fulfilled: ${detail}` };
-      }
-    }
-
-    return { ok: true, message: "SPX tracking saved as ready to ship" };
+    return { ok: true, message: "SPX tracking and AWB saved; send them to the warehouse next" };
   }
 
   if (intent === "fulfill_shopify") {
@@ -146,7 +152,21 @@ function XlsxDownloadButton({ id, label }: { id?: number; label: string }) {
   );
 }
 
-function ShipmentActions({ shipment }: { shipment: Shipment }) {
+function WorkflowButton({ id, intent, label }: { id: number; intent: string; label: string }) {
+  const fetcher = useFetcher<typeof action>();
+  const shopify = useAppBridge();
+  const busy = fetcher.state !== "idle";
+  useEffect(() => {
+    if (fetcher.data?.message) shopify.toast.show(fetcher.data.message);
+  }, [fetcher.data, shopify]);
+  return <fetcher.Form method="post">
+    <input type="hidden" name="id" value={id} />
+    <input type="hidden" name="intent" value={intent} />
+    <button className={styles.button} disabled={busy} type="submit">{busy ? "Working..." : label}</button>
+  </fetcher.Form>;
+}
+
+function ShipmentActions({ shipment, omsMode }: { shipment: Shipment; omsMode: IntegrationConfig["oms_mode"] }) {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   const busy = fetcher.state !== "idle";
@@ -154,7 +174,26 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
     if (fetcher.data?.message) shopify.toast.show(fetcher.data.message);
   }, [fetcher.data, shopify]);
 
-  if (shipment.shipment_status === "pending" && !shipment.spx_tracking_number) {
+  const isDue = shipment.scheduled_ship_date <= new Date().toISOString().slice(0, 10);
+  if (!isDue && shipment.warehouse_status === "not_sent") {
+    return <small>Scheduled for {formatDate(shipment.scheduled_ship_date)}</small>;
+  }
+
+  if ((shipment.warehouse_status === "not_sent" || shipment.warehouse_status === "failed") && shipment.shipment_status === "pending") {
+    return <div className={styles.confirmStack}>
+      <WorkflowButton id={shipment.id} intent="release_to_oms" label={shipment.warehouse_status === "failed" ? "Retry OMS release" : "Send to OMS"} />
+      {shipment.warehouse_error ? <small className={styles.dangerText}>{shipment.warehouse_error}</small> : null}
+    </div>;
+  }
+
+  if (shipment.warehouse_status === "submitted" || shipment.warehouse_status === "picking") {
+    return <div className={styles.confirmStack}>
+      <WorkflowButton id={shipment.id} intent="sync_oms" label={omsMode === "mock" ? "Advance mock status" : "Check warehouse status"} />
+      <small>SPX becomes available after the parcel is packed.</small>
+    </div>;
+  }
+
+  if (shipment.warehouse_status === "packed" && !shipment.spx_tracking_number) {
     return <div className={styles.confirmStack}>
       <XlsxDownloadButton id={shipment.id} label="Download SPX Excel" />
       <fetcher.Form className={styles.confirmForm} method="post">
@@ -162,17 +201,16 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
         <input type="hidden" name="order_id" value={shipment.order_id} />
         <input type="hidden" name="intent" value="confirm_spx" />
         <input aria-label={`SPX tracking for shipment ${shipment.id}`} name="tracking_number" placeholder="SPX tracking number" required />
-        <label className={styles.checkField}>
-          <input defaultChecked={shipment.total_shipments === 1} name="mark_shopify_fulfilled" type="checkbox" value="yes" />
-          Mark Shopify fulfilled
-        </label>
-        {shipment.total_shipments > 1 ? <small>Only check when this Shopify line should be fully fulfilled.</small> : null}
-        <button className={styles.buttonSecondary} disabled={busy} type="submit">Confirm SPX order</button>
+        <input aria-label={`AWB PDF URL for shipment ${shipment.id}`} name="awb_url" placeholder={omsMode === "mock" ? "AWB PDF URL (optional in mock)" : "HTTPS AWB PDF URL"} required={omsMode === "api"} type="url" />
+        <button className={styles.buttonSecondary} disabled={busy} type="submit">Record SPX booking</button>
       </fetcher.Form>
     </div>;
   }
   return <div className={styles.confirmStack}>
-    {shipment.shipment_status === "ready_to_ship" && shipment.spx_tracking_number ? (
+    {shipment.warehouse_status === "packed" && shipment.spx_tracking_number ? (
+      <WorkflowButton id={shipment.id} intent="send_awb_to_oms" label="Send AWB to warehouse" />
+    ) : null}
+    {new Set(["awb_sent", "ready_for_pickup"]).has(shipment.warehouse_status) && shipment.shipment_status === "ready_to_ship" && shipment.spx_tracking_number && (shipment.total_shipments === 1 || shipment.shipment_number === shipment.total_shipments) ? (
       <fetcher.Form method="post">
         <input type="hidden" name="id" value={shipment.id} />
         <input type="hidden" name="order_id" value={shipment.order_id} />
@@ -181,6 +219,7 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
         <button className={styles.button} disabled={busy} type="submit">Fulfill in Shopify</button>
       </fetcher.Form>
     ) : null}
+    {shipment.warehouse_status === "awb_sent" && shipment.total_shipments > 1 && shipment.shipment_number < shipment.total_shipments ? <small>Shopify fulfillment remains open until the final scheduled shipment.</small> : null}
     <fetcher.Form className={styles.tableActions} method="post">
         <input type="hidden" name="id" value={shipment.id} />
         <input type="hidden" name="intent" value="update_status" />
@@ -193,13 +232,17 @@ function ShipmentActions({ shipment }: { shipment: Shipment }) {
 }
 
 export default function ShipmentsPage() {
-  const { shipments } = useLoaderData<typeof loader>();
+  const { shipments, integration } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const dueForExport = shipments.some(
-    (shipment) => shipment.shipment_status === "pending" && shipment.scheduled_ship_date <= new Date().toISOString().slice(0, 10),
+    (shipment) => shipment.shipment_status === "pending" && shipment.warehouse_status === "packed" && !shipment.spx_tracking_number && shipment.scheduled_ship_date <= new Date().toISOString().slice(0, 10),
   );
   return (
     <s-page heading="Shipments">
+      {integration.oms_mode === "mock" ? <div className={styles.infoBar}>
+        <strong>OMS mock mode</strong>
+        <span>Use the workflow buttons to simulate submitted, picking, packed, and AWB handoff while Ninja Van API access is pending.</span>
+      </div> : null}
       {dueForExport ? <div className={styles.exportBar}>
         <XlsxDownloadButton label="Download due shipments Excel" />
       </div> : null}
@@ -214,14 +257,15 @@ export default function ShipmentsPage() {
       <section className={styles.panel}>
         {shipments.length === 0 ? <EmptyState title="No shipments found">Adjust the filters or wait for the next Shopify order.</EmptyState> : (
           <div className={styles.tableWrap}><table className={styles.table}>
-            <thead><tr><th>Customer</th><th>Shipment</th><th>Scheduled</th><th>Tracking</th><th>Status</th><th>Action</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Shipment</th><th>Scheduled</th><th>Warehouse</th><th>SPX</th><th>Delivery</th><th>Action</th></tr></thead>
             <tbody>{shipments.map((shipment) => <tr key={shipment.id}>
               <td><strong>{shipment.customer_name}</strong><small>{shipment.customer_email}</small></td>
               <td><strong>{shipment.shipment_number} of {shipment.total_shipments}</strong><small>{shipment.product_name}</small></td>
               <td>{formatDate(shipment.scheduled_ship_date)}</td>
-              <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href="https://spx.ph/track" rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not created"}</td>
+              <td><StatusBadge status={shipment.warehouse_status} />{shipment.oms_order_reference ? <small>{shipment.oms_order_reference}</small> : null}</td>
+              <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href="https://spx.ph/track" rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.spx_awb_url} rel="noreferrer" target="_blank">AWB PDF</a></small> : null}</td>
               <td><StatusBadge status={shipment.shipment_status} /></td>
-              <td><ShipmentActions shipment={shipment} /></td>
+              <td><ShipmentActions shipment={shipment} omsMode={integration.oms_mode} /></td>
             </tr>)}</tbody>
           </table></div>
         )}

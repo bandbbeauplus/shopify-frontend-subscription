@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ShipmentStatus, SubscriptionStatus } from "../lib/types";
+import type { ShipmentStatus, SubscriptionStatus, WarehouseStatus } from "../lib/types";
 import styles from "../styles/admin.module.css";
 
 const money = new Intl.NumberFormat("en-PH", {
@@ -24,7 +24,7 @@ export function formatDate(value: string | null) {
 export function StatusBadge({
   status,
 }: {
-  status: ShipmentStatus | SubscriptionStatus;
+  status: ShipmentStatus | SubscriptionStatus | WarehouseStatus;
 }) {
   return (
     <span className={`${styles.badge} ${styles[`status_${status}`]}`}>

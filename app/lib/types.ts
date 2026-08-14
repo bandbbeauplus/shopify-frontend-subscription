@@ -8,6 +8,15 @@ export type ShipmentStatus =
 
 export type SubscriptionStatus = "active" | "paused" | "cancelled" | "completed";
 
+export type WarehouseStatus =
+  | "not_sent"
+  | "submitted"
+  | "picking"
+  | "packed"
+  | "awb_sent"
+  | "ready_for_pickup"
+  | "failed";
+
 export interface ShippingAddress {
   address1?: string;
   address2?: string;
@@ -26,13 +35,24 @@ export interface Shipment {
   customer_phone: string | null;
   shipping_address: ShippingAddress | null;
   product_name: string;
+  product_sku: string | null;
+  product_quantity: number;
   shipment_number: number;
   total_shipments: number;
   scheduled_ship_date: string;
   actual_ship_date: string | null;
   spx_tracking_number: string | null;
+  spx_awb_url: string | null;
+  oms_order_id: string | null;
+  oms_order_reference: string | null;
+  warehouse_status: WarehouseStatus;
+  warehouse_error: string | null;
   shipment_status: ShipmentStatus;
   notes: string | null;
+}
+
+export interface IntegrationConfig {
+  oms_mode: "mock" | "api";
 }
 
 export interface Subscription {
