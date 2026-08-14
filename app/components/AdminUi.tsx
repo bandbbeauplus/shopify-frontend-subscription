@@ -24,11 +24,13 @@ export function formatDate(value: string | null) {
 export function StatusBadge({
   status,
 }: {
-  status: ShipmentStatus | SubscriptionStatus | WarehouseStatus;
+  status?: ShipmentStatus | SubscriptionStatus | WarehouseStatus | null;
 }) {
+  const safeStatus = status || "unknown";
+
   return (
-    <span className={`${styles.badge} ${styles[`status_${status}`]}`}>
-      {status.replaceAll("_", " ")}
+    <span className={`${styles.badge} ${styles[`status_${safeStatus}`] || ""}`}>
+      {safeStatus.replaceAll("_", " ")}
     </span>
   );
 }

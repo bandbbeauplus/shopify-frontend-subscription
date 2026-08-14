@@ -25,7 +25,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     backendRequest<Shipment[]>(`/api/shipments${suffix}`),
     backendRequest<IntegrationConfig>("/api/shipments/integration-config"),
   ]);
-  return { shipments, integration };
+  return {
+    shipments: shipments.map((shipment) => ({
+      ...shipment,
+      warehouse_status: shipment.warehouse_status || "not_sent",
+    })),
+    integration,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -50,7 +56,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "sync_oms") {
     const result = await backendRequest<{ shipment: Shipment }>(`/api/shipments/${id}/sync-oms`, { method: "POST" });
-    return { ok: true, message: `Warehouse status: ${result.shipment.warehouse_status.replaceAll("_", " ")}` };
+    const warehouseStatus = result.shipment.warehouse_status || "not_sent";
+    return { ok: true, message: `Warehouse status: ${warehouseStatus.replaceAll("_", " ")}` };
   }
 
   if (intent === "send_awb_to_oms") {
