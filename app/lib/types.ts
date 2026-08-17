@@ -18,24 +18,31 @@ export type WarehouseStatus =
   | "failed";
 
 export interface ShippingAddress {
+  first_name?: string;
+  last_name?: string;
   address1?: string;
   address2?: string;
   city?: string;
   province?: string;
+  province_code?: string;
   zip?: string;
   country?: string;
+  country_code?: string;
+  phone?: string;
 }
 
 export interface Shipment {
   id: number;
   subscription_id: number;
   order_id: string;
+  customer_id: string | null;
   customer_name: string;
   customer_email: string;
   customer_phone: string | null;
   shipping_address: ShippingAddress | null;
   product_name: string;
   product_sku: string | null;
+  product_variant_id: string | null;
   product_quantity: number;
   shipment_number: number;
   total_shipments: number;
@@ -45,6 +52,8 @@ export interface Shipment {
   spx_awb_url: string | null;
   oms_order_id: string | null;
   oms_order_reference: string | null;
+  shopify_delivery_order_id: string | null;
+  shopify_delivery_order_name: string | null;
   warehouse_status: WarehouseStatus;
   warehouse_error: string | null;
   shipment_status: ShipmentStatus;

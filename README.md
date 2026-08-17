@@ -59,7 +59,7 @@ npm run dev
 | `SHOPIFY_API_KEY` | Shopify app client ID |
 | `SHOPIFY_API_SECRET` | Shopify app client secret |
 | `SHOPIFY_APP_URL` | Public URL of this frontend service |
-| `SCOPES` | Shopify scopes; use `read_products,read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders` |
+| `SCOPES` | Shopify scopes; use `read_products,read_orders,write_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders` |
 | `SUBSCRIPTION_API_URL` | Existing Express backend base URL |
 | `SUBSCRIPTION_API_KEY` | Private shared key sent from this server to Express |
 
@@ -68,7 +68,7 @@ The backend must define `DASHBOARD_API_KEY` with the exact same value before its
 ## Operational limitations
 
 - The dashboard currently retrieves complete shipment and subscription lists; pagination and database-side summary queries are not implemented.
-- Shipment creation is not fully idempotent under concurrent requests. Avoid double-clicking fulfillment actions until a database lock or idempotency key is added.
+- Prepaid delivery-order retries search Shopify by a deterministic shipment tag before creating anything. Concurrent requests can still race, so avoid triggering the same release from multiple browser tabs.
 - A tracking number confirms label/order creation and initially sets `ready_to_ship`. Only explicitly creating the Shopify fulfillment changes the internal status to `shipped`.
 - Multi-month subscriptions are represented by one Shopify line item and several internal shipments. Only select **Mark Shopify fulfilled** when that Shopify line should be fully fulfilled; Shopify cannot represent those monthly parcels separately with the current product/order model.
 - The backend currently recognizes plans by parsing variant titles. Keep plan titles in the expected `1`, `3`, `6`, or `12` month format until variant metadata or IDs are used instead.

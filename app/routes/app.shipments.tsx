@@ -3,9 +3,10 @@ import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "re
 import { Form, useFetcher, useLoaderData, useNavigation } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticate, unauthenticated } from "../shopify.server";
 import { backendBinaryRequest, backendRequest } from "../lib/backend.server";
 import { createShopifyFulfillment } from "../lib/shopifyFulfillment.server";
+import { createPrepaidDeliveryOrder } from "../lib/shopifyDeliveryOrder.server";
 import type { IntegrationConfig, Shipment, ShipmentStatus } from "../lib/types";
 import { EmptyState, formatDate, StatusBadge } from "../components/AdminUi";
 import styles from "../styles/admin.module.css";
@@ -35,7 +36,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
   const intent = String(form.get("intent") || "");
 
@@ -50,8 +51,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!Number.isInteger(id) || id < 1) throw new Response("Invalid shipment ID", { status: 400 });
 
   if (intent === "release_to_oms") {
-    await backendRequest(`/api/shipments/${id}/release-to-oms`, { method: "POST" });
-    return { ok: true, message: "Shipment released to OMS" };
+    const shipment = await backendRequest<Shipment>(`/api/shipments/${id}`);
+    const { admin: offlineAdmin } = await unauthenticated.admin(session.shop);
+    const deliveryOrder = await createPrepaidDeliveryOrder(offlineAdmin, shipment);
+    await backendRequest(`/api/shipments/${id}/link-shopify-delivery-order`, {
+      method: "POST",
+      body: JSON.stringify({
+        shopify_order_id: deliveryOrder.orderId,
+        shopify_order_name: deliveryOrder.orderName,
+        product_variant_id: deliveryOrder.variantId,
+      }),
+    });
+    const action = deliveryOrder.created ? "created" : "linked";
+    return { ok: true, message: `Shopify delivery order ${deliveryOrder.orderName} ${action} for SellerCraft` };
   }
 
   if (intent === "sync_oms") {
@@ -188,7 +200,15 @@ function ShipmentActions({ shipment, omsMode }: { shipment: Shipment; omsMode: I
 
   if ((shipment.warehouse_status === "not_sent" || shipment.warehouse_status === "failed") && shipment.shipment_status === "pending") {
     return <div className={styles.confirmStack}>
-      <WorkflowButton id={shipment.id} intent="release_to_oms" label={shipment.warehouse_status === "failed" ? "Retry OMS release" : "Send to OMS"} />
+      <WorkflowButton
+        id={shipment.id}
+        intent="release_to_oms"
+        label={shipment.warehouse_status === "failed"
+          ? "Retry Shopify release"
+          : shipment.shipment_number === 1
+            ? "Link checkout order"
+            : "Create delivery order"}
+      />
       {shipment.warehouse_error ? <small className={styles.dangerText}>{shipment.warehouse_error}</small> : null}
     </div>;
   }
@@ -220,7 +240,7 @@ function ShipmentActions({ shipment, omsMode }: { shipment: Shipment; omsMode: I
     {new Set(["awb_sent", "ready_for_pickup"]).has(shipment.warehouse_status) && shipment.shipment_status === "ready_to_ship" && shipment.spx_tracking_number && (shipment.total_shipments === 1 || shipment.shipment_number === shipment.total_shipments) ? (
       <fetcher.Form method="post">
         <input type="hidden" name="id" value={shipment.id} />
-        <input type="hidden" name="order_id" value={shipment.order_id} />
+        <input type="hidden" name="order_id" value={shipment.shopify_delivery_order_id || shipment.order_id} />
         <input type="hidden" name="tracking_number" value={shipment.spx_tracking_number} />
         <input type="hidden" name="intent" value="fulfill_shopify" />
         <button className={styles.button} disabled={busy} type="submit">Fulfill in Shopify</button>
@@ -247,8 +267,8 @@ export default function ShipmentsPage() {
   return (
     <s-page heading="Shipments">
       {integration.oms_mode === "mock" ? <div className={styles.infoBar}>
-        <strong>OMS mock mode</strong>
-        <span>Use the workflow buttons to simulate submitted, picking, packed, and AWB handoff while Ninja Van API access is pending.</span>
+        <strong>SellerCraft preparation mode</strong>
+        <span>The first shipment links its checkout order. Later prepaid deliveries create zero-value Shopify orders for SellerCraft to import. Warehouse status remains simulated while direct status API access is pending.</span>
       </div> : null}
       {dueForExport ? <div className={styles.exportBar}>
         <XlsxDownloadButton label="Download due shipments Excel" />
