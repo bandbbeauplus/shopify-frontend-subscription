@@ -4,7 +4,12 @@ Shopify embedded React app for operating the prepaid B&B BEAU+ subscription prog
 
 ## Current status
 
-This is an internal MVP. The Shopify admin flow, order webhook pipeline, database schedule generation, SPX Excel reconciliation, and manual fulfillment dashboard are implemented. A direct SPX API and automatic SPX tracking-status synchronization still require a verified merchant API contract. SMS delivery uses a provider-specific example and must be verified before production use.
+This is an internal MVP. The Shopify admin flow, strict prepaid-plan detection,
+calendar-month schedule generation, SellerCraft/Anchanto preparation workflow,
+SPX OpenAPI UAT booking, Excel reconciliation, and manual fulfillment dashboard
+are implemented. SPX production pickup still requires Ninja Van's warehouse
+sender details and API 1.1 timeslot selection. SMS delivery uses a
+provider-specific example and must be verified before production use.
 
 The current setup is intended for one store. The backend uses a shared API key and does not yet scope records by Shopify shop.
 
@@ -14,18 +19,30 @@ The current setup is intended for one store. The backend uses a shared API key a
 - Shipment search by email, status, and date range
 - Bulk SPX Excel-template download for pending shipments due today
 - SPX tracking confirmation after a mass-order Excel import
+- Signed SPX API batch creation, tracking-result polling, and AWB retrieval
+- Automatic SPX AWB archival in Google Drive and monitoring-row upsert in
+  Google Sheets when the backend integration is configured
+- UAT-only approved address substitution that excludes real customer addresses
 - Optional Shopify fulfillment creation with SPX tracking
 - Retryable **Fulfill in Shopify** action for tracked, ready-to-ship shipments
 - Manual shipment status changes and SPX tracking links
 - Subscription search and cancellation
+- Shipment 1 links the original Shopify checkout so SellerCraft does not receive
+  a duplicate order
+- Shipment 2 onward creates tagged, zero-value Shopify delivery orders for
+  SellerCraft to import into Anchanto WMS
 - Server-only proxy to the existing Express API
 - Shopify product-page theme app block for selecting prepaid plans
 
 ## Architecture
 
 ```text
-Shopify Admin -> authenticated React Router app -> Express subscription API -> PostgreSQL/Supabase
 Shopify product page -> theme app block -> Shopify cart and checkout
+Shopify order webhook -> Express subscription API -> PostgreSQL/Supabase
+Shopify orders -> SellerCraft OMS -> Anchanto WMS -> packed confirmation
+Packed parcel -> SPX booking/AWB -> warehouse printing and pickup preparation
+SPX AWB -> private Google Drive copy -> Ninja Van monitoring Sheet
+Shopify Admin -> authenticated React Router app -> Express subscription API
 ```
 
 The browser never receives `SUBSCRIPTION_API_KEY`. Each app loader/action authenticates the Shopify admin session before the app server calls Express with `X-Dashboard-Key`.
@@ -70,16 +87,33 @@ The backend must define `DASHBOARD_API_KEY` with the exact same value before its
 - The dashboard currently retrieves complete shipment and subscription lists; pagination and database-side summary queries are not implemented.
 - Prepaid delivery-order retries search Shopify by a deterministic shipment tag before creating anything. Concurrent requests can still race, so avoid triggering the same release from multiple browser tabs.
 - A tracking number confirms label/order creation and initially sets `ready_to_ship`. Only explicitly creating the Shopify fulfillment changes the internal status to `shipped`.
-- Multi-month subscriptions are represented by one Shopify line item and several internal shipments. Only select **Mark Shopify fulfilled** when that Shopify line should be fully fulfilled; Shopify cannot represent those monthly parcels separately with the current product/order model.
-- The backend currently recognizes plans by parsing variant titles. Keep plan titles in the expected `1`, `3`, `6`, or `12` month format until variant metadata or IDs are used instead.
+- Multi-month subscriptions are represented by one Shopify line item and several
+  internal shipments. Shipment 1 uses the checkout order; later shipments use
+  tagged, zero-value child orders. The dashboard only offers final Shopify
+  fulfillment at the appropriate point in the schedule.
+- The backend recognizes a plan only when `variant_title` starts with
+  `1-Month Plan`, `3-Month Plan`, `6-Month Plan`, or `12-Month Plan` (hyphen,
+  en dash, and em dash are accepted). Variants such as `7 Sachets`,
+  `14 Sachets`, and `28 Sachets` are ordinary purchases and are ignored.
+- SKU values are required for reliable SellerCraft/Anchanto product mapping and
+  child-order variant resolution, but plan detection does not depend on SKU.
+- SellerCraft/Anchanto connection setup and test SKU mapping are handled with
+  the Ninja Van team. Do not place a test order until they confirm the selected
+  SKU is synchronized and mapped.
 - The order webhook should be configured to receive only valid paid orders; payment-status validation is not yet enforced by the backend.
-- Automated backend coverage currently focuses on SPX workbook generation; fulfillment and reconciliation integration tests are still needed.
+- Automated backend coverage includes SPX signing, UAT address isolation,
+  asynchronous result mapping, workbook generation, plan detection, and OMS
+  mapping; route-level integration tests are still needed.
 - SPX downloads use the official Philippines mass-order `.xlsx` template. Confirm the configured parcel weight, dimensions, item type, and payment method before live use.
+- Google AWB synchronization is performed only by the Express backend. The
+  embedded app displays the stable Drive link and retry status but never
+  receives Google service-account credentials.
 
 ## Verification
 
 ```powershell
 npm run typecheck
+npm run lint
 npm run build
 ```
 
@@ -89,9 +123,16 @@ Because the parent workspace includes an ampersand (`B&B`), project scripts invo
 
 Deploy this folder as a Node web service. Run `npm run setup` during release, build with `npm run build`, and start with `npm run start`. Use persistent PostgreSQL-backed Shopify session storage before running multiple frontend instances; the included SQLite storage is suitable for local development and a single persistent instance.
 
+Deploy Shopify configuration and extensions with
+`npm run deploy -- --config bb-subscription-dashboard`. The hosted Render
+service must also contain the matching environment variables and latest Git
+revision.
+
 Before production deployment:
 
-1. Confirm the real SPX API contract, authentication, request fields, tracking/status response, webhook support, retry behavior, and idempotency support. Until then, use Excel export plus manual tracking confirmation.
+1. Complete one UAT order through SPX API 1.4, 1.5, and 1.6. Before production,
+   obtain Ninja Van's sender address/phone and implement SPX API 1.1 pickup
+   timeslot selection. Keep Excel export as a fallback.
 2. Confirm SMS provider credentials and delivery behavior.
 3. Use strong, separate secrets for Shopify and the dashboard-to-backend connection.
 4. Decide whether the app is single-store or multi-store. Multi-store operation requires shop-aware data isolation in the backend.

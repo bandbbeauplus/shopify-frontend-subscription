@@ -72,6 +72,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { ok: true, message: `Warehouse status: ${warehouseStatus.replaceAll("_", " ")}` };
   }
 
+  if (intent === "mark_packed") {
+    await backendRequest(`/api/shipments/${id}/mark-packed`, { method: "POST" });
+    return { ok: true, message: "Packed status confirmed; SPX booking is now available" };
+  }
+
+  if (intent === "create_spx_api") {
+    const result = await backendRequest<{ shipment: Shipment }>(`/api/shipments/${id}/create-spx`, { method: "POST" });
+    const batch = result.shipment.spx_batch_no;
+    return { ok: true, message: batch ? `SPX order submitted (batch ${batch})` : "SPX order submission is already processing" };
+  }
+
+  if (intent === "sync_spx") {
+    const result = await backendRequest<{ success: boolean; shipment: Shipment }>(`/api/shipments/${id}/sync-spx`, { method: "POST" });
+    const status = result.shipment.spx_booking_status || "processing";
+    const detail = result.shipment.spx_error ? `: ${result.shipment.spx_error}` : "";
+    return { ok: result.success, message: `SPX status: ${status.replaceAll("_", " ")}${detail}` };
+  }
+
+  if (intent === "sync_awb_google") {
+    const result = await backendRequest<{ success: boolean; shipment: Shipment }>(`/api/shipments/${id}/sync-awb-google`, { method: "POST" });
+    const detail = result.shipment.google_awb_error ? `: ${result.shipment.google_awb_error}` : "";
+    return {
+      ok: result.success,
+      message: result.success
+        ? "AWB uploaded to Google Drive and recorded in the monitoring sheet"
+        : `Google AWB sync failed${detail}`,
+    };
+  }
+
   if (intent === "send_awb_to_oms") {
     await backendRequest(`/api/shipments/${id}/send-awb-to-oms`, { method: "POST" });
     return { ok: true, message: "SPX AWB sent to the warehouse" };
@@ -185,7 +214,7 @@ function WorkflowButton({ id, intent, label }: { id: number; intent: string; lab
   </fetcher.Form>;
 }
 
-function ShipmentActions({ shipment, omsMode }: { shipment: Shipment; omsMode: IntegrationConfig["oms_mode"] }) {
+function ShipmentActions({ shipment, integration }: { shipment: Shipment; integration: IntegrationConfig }) {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   const busy = fetcher.state !== "idle";
@@ -194,6 +223,9 @@ function ShipmentActions({ shipment, omsMode }: { shipment: Shipment; omsMode: I
   }, [fetcher.data, shopify]);
 
   const isDue = shipment.scheduled_ship_date <= new Date().toISOString().slice(0, 10);
+  const awbReadyForWarehouse = integration.google_awb_configured
+    ? shipment.google_awb_sync_status === "synced" && Boolean(shipment.google_awb_url)
+    : Boolean(shipment.spx_awb_url) || integration.oms_mode === "mock";
   if (!isDue && shipment.warehouse_status === "not_sent") {
     return <small>Scheduled for {formatDate(shipment.scheduled_ship_date)}</small>;
   }
@@ -215,29 +247,54 @@ function ShipmentActions({ shipment, omsMode }: { shipment: Shipment; omsMode: I
 
   if (shipment.warehouse_status === "submitted" || shipment.warehouse_status === "picking") {
     return <div className={styles.confirmStack}>
-      <WorkflowButton id={shipment.id} intent="sync_oms" label={omsMode === "mock" ? "Advance mock status" : "Check warehouse status"} />
+      {integration.oms_mode === "manual"
+        ? <WorkflowButton id={shipment.id} intent="mark_packed" label="Confirm Ninja Van packed" />
+        : <WorkflowButton id={shipment.id} intent="sync_oms" label={integration.oms_mode === "mock" ? "Advance mock status" : "Check warehouse status"} />}
       <small>SPX becomes available after the parcel is packed.</small>
     </div>;
   }
 
   if (shipment.warehouse_status === "packed" && !shipment.spx_tracking_number) {
     return <div className={styles.confirmStack}>
+      {integration.spx_mode === "api" && integration.spx_configured ? (
+        shipment.spx_batch_no
+          ? <WorkflowButton id={shipment.id} intent="sync_spx" label="Check SPX order result" />
+          : <WorkflowButton id={shipment.id} intent="create_spx_api" label={integration.spx_environment === "uat" ? "Create SPX UAT order" : "Create SPX order"} />
+      ) : null}
+      {shipment.spx_booking_status ? <small>API status: {shipment.spx_booking_status.replaceAll("_", " ")}</small> : null}
+      {shipment.spx_error ? <small className={styles.dangerText}>{shipment.spx_error}</small> : null}
       <XlsxDownloadButton id={shipment.id} label="Download SPX Excel" />
       <fetcher.Form className={styles.confirmForm} method="post">
         <input type="hidden" name="id" value={shipment.id} />
         <input type="hidden" name="order_id" value={shipment.order_id} />
         <input type="hidden" name="intent" value="confirm_spx" />
         <input aria-label={`SPX tracking for shipment ${shipment.id}`} name="tracking_number" placeholder="SPX tracking number" required />
-        <input aria-label={`AWB PDF URL for shipment ${shipment.id}`} name="awb_url" placeholder={omsMode === "mock" ? "AWB PDF URL (optional in mock)" : "HTTPS AWB PDF URL"} required={omsMode === "api"} type="url" />
+        <input aria-label={`AWB PDF URL for shipment ${shipment.id}`} name="awb_url" placeholder={integration.oms_mode === "mock" ? "AWB PDF URL (optional in mock)" : "HTTPS AWB PDF URL"} required={integration.oms_mode === "api"} type="url" />
         <button className={styles.buttonSecondary} disabled={busy} type="submit">Record SPX booking</button>
       </fetcher.Form>
     </div>;
   }
   return <div className={styles.confirmStack}>
-    {shipment.warehouse_status === "packed" && shipment.spx_tracking_number ? (
-      <WorkflowButton id={shipment.id} intent="send_awb_to_oms" label="Send AWB to warehouse" />
+    {shipment.spx_tracking_number && !shipment.spx_awb_url && shipment.spx_batch_no && integration.spx_mode === "api" ? (
+      <WorkflowButton id={shipment.id} intent="sync_spx" label="Check SPX AWB" />
     ) : null}
-    {new Set(["awb_sent", "ready_for_pickup"]).has(shipment.warehouse_status) && shipment.shipment_status === "ready_to_ship" && shipment.spx_tracking_number && (shipment.total_shipments === 1 || shipment.shipment_number === shipment.total_shipments) ? (
+    {shipment.spx_awb_url && integration.google_awb_configured && shipment.google_awb_sync_status !== "synced" ? (
+      <div className={styles.confirmStack}>
+        <WorkflowButton id={shipment.id} intent="sync_awb_google" label={shipment.google_awb_sync_status === "failed" ? "Retry Google AWB sync" : "Sync AWB to Google"} />
+        {shipment.google_awb_error ? <small className={styles.dangerText}>{shipment.google_awb_error}</small> : null}
+      </div>
+    ) : null}
+    {shipment.google_awb_sync_status === "synced" ? (
+      <small>AWB saved in Drive and Google Sheet{shipment.google_sheet_row_number ? ` (row ${shipment.google_sheet_row_number})` : ""}.</small>
+    ) : null}
+    {shipment.warehouse_status === "packed" && shipment.spx_tracking_number && awbReadyForWarehouse ? (
+      <WorkflowButton
+        id={shipment.id}
+        intent="send_awb_to_oms"
+        label={integration.oms_mode === "manual" ? "Mark AWB shared with Ninja Van" : "Send AWB to warehouse"}
+      />
+    ) : null}
+    {integration.oms_mode !== "manual" && new Set(["awb_sent", "ready_for_pickup"]).has(shipment.warehouse_status) && shipment.shipment_status === "ready_to_ship" && shipment.spx_tracking_number && (shipment.total_shipments === 1 || shipment.shipment_number === shipment.total_shipments) ? (
       <fetcher.Form method="post">
         <input type="hidden" name="id" value={shipment.id} />
         <input type="hidden" name="order_id" value={shipment.shopify_delivery_order_id || shipment.order_id} />
@@ -267,8 +324,24 @@ export default function ShipmentsPage() {
   return (
     <s-page heading="Shipments">
       {integration.oms_mode === "mock" ? <div className={styles.infoBar}>
-        <strong>SellerCraft preparation mode</strong>
-        <span>The first shipment links its checkout order. Later prepaid deliveries create zero-value Shopify orders for SellerCraft to import. Warehouse status remains simulated while direct status API access is pending.</span>
+        <strong>SellerCraft simulation mode</strong>
+        <span>The first shipment links its checkout order. Later prepaid deliveries create zero-value Shopify orders for SellerCraft to import. Warehouse status is simulated.</span>
+      </div> : null}
+      {integration.oms_mode === "manual" ? <div className={styles.infoBar}>
+        <strong>SellerCraft / Anchanto managed connection</strong>
+        <span>Orders reach Ninja Van through SellerCraft. Confirm packed only after Ninja Van verifies it, then create the SPX booking and manually share the generated AWB PDF with the warehouse.</span>
+      </div> : null}
+      {integration.spx_mode === "api" && !integration.spx_configured ? <div className={styles.infoBar}>
+        <strong>SPX API needs configuration</strong>
+        <span>Add the SPX app and user credentials to the backend environment. Excel export remains available as a fallback.</span>
+      </div> : null}
+      {integration.google_awb_mode === "api" && !integration.google_awb_configured ? <div className={styles.infoBar}>
+        <strong>Google AWB sync needs configuration</strong>
+        <span>Add the service-account, Drive folder, and Sheet settings to the backend. SPX booking remains available while Google sync is disabled.</span>
+      </div> : null}
+      {integration.google_awb_configured ? <div className={styles.infoBar}>
+        <strong>Automatic AWB monitoring enabled</strong>
+        <span>When SPX finishes an AWB, the backend archives its PDF in Google Drive and adds or updates the shipment row in Google Sheets.</span>
       </div> : null}
       {dueForExport ? <div className={styles.exportBar}>
         <XlsxDownloadButton label="Download due shipments Excel" />
@@ -290,9 +363,9 @@ export default function ShipmentsPage() {
               <td><strong>{shipment.shipment_number} of {shipment.total_shipments}</strong><small>{shipment.product_name}</small></td>
               <td>{formatDate(shipment.scheduled_ship_date)}</td>
               <td><StatusBadge status={shipment.warehouse_status} />{shipment.oms_order_reference ? <small>{shipment.oms_order_reference}</small> : null}</td>
-              <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href="https://spx.ph/track" rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.spx_awb_url} rel="noreferrer" target="_blank">AWB PDF</a></small> : null}</td>
+              <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href="https://spx.ph/track" rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.google_awb_url || shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">{shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}</a></small> : null}</td>
               <td><StatusBadge status={shipment.shipment_status} /></td>
-              <td><ShipmentActions shipment={shipment} omsMode={integration.oms_mode} /></td>
+              <td><ShipmentActions shipment={shipment} integration={integration} /></td>
             </tr>)}</tbody>
           </table></div>
         )}

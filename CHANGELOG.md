@@ -1,6 +1,36 @@
-# @shopify/shopify-app-template-react-router
+# B&B BEAU+ Subscription Admin changelog
 
-## 2026.01.08
+## 2026-08-28
+
+- Added automatic archival of completed SPX AWB PDFs in Google Drive.
+- Added retry-safe Google Sheets monitoring rows keyed by shipment ID.
+- Added dashboard visibility and retry controls for Google AWB synchronization.
+
+## 2026-08-22
+
+- Added direct SPX UAT batch-order submission, result polling, and AWB retrieval
+  controls backed by the server-side OpenAPI integration.
+- Added explicit manual Ninja Van packed confirmation and AWB-shared workflow
+  for the managed SellerCraft/Anchanto connection.
+- Kept Excel export and manual tracking entry as fallback operations.
+
+## 2026-08-18
+
+- Added the embedded overview, shipments, and subscriptions interfaces.
+- Added authenticated server-side proxying to the Express subscription API.
+- Added SellerCraft preparation flow: shipment 1 links the original checkout;
+  shipment 2 onward creates a tagged, zero-value Shopify delivery order.
+- Added OMS/WMS status controls, packed-state gating, SPX workbook download,
+  AWB recording and handoff, and Shopify fulfillment with SPX tracking.
+- Added defensive display formatting for incomplete shipment data.
+- Added the B&B BEAU+ prepaid-plan theme app block.
+
+## Shopify template history
+
+The project began from `@shopify/shopify-app-template-react-router`; upstream
+template changes retained below are reference history.
+
+### 2026.01.08
 - [#170](https://github.com/Shopify/shopify-app-template-react-router/pull/170) - Update React Router minimum version to v7.12.0
 
 ## 2025.12.11

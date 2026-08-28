@@ -49,7 +49,17 @@ export interface Shipment {
   scheduled_ship_date: string;
   actual_ship_date: string | null;
   spx_tracking_number: string | null;
+  spx_batch_no: string | null;
+  spx_order_id: string | null;
+  spx_booking_status: string | null;
+  spx_error: string | null;
   spx_awb_url: string | null;
+  google_drive_file_id: string | null;
+  google_awb_url: string | null;
+  google_sheet_row_number: number | null;
+  google_awb_sync_status: string | null;
+  google_awb_synced_at: string | null;
+  google_awb_error: string | null;
   oms_order_id: string | null;
   oms_order_reference: string | null;
   shopify_delivery_order_id: string | null;
@@ -61,7 +71,12 @@ export interface Shipment {
 }
 
 export interface IntegrationConfig {
-  oms_mode: "mock" | "api";
+  oms_mode: "manual" | "mock" | "api";
+  spx_mode: "disabled" | "api";
+  spx_environment: "uat" | "production";
+  spx_configured: boolean;
+  google_awb_mode: "disabled" | "api";
+  google_awb_configured: boolean;
 }
 
 export interface Subscription {
