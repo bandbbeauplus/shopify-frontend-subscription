@@ -24,6 +24,9 @@ documentation; do not add agent tooling as a project dependency.
   integration.
 - SPX booking remains a separate fulfillment step. Do not treat a SellerCraft
   or Anchanto response as an SPX AWB.
+- SPX evidence links may contain pickup photos or customer signatures. Render
+  them only inside authenticated admin routes; never log or expose them through
+  public loaders.
 - Direct SPX calls belong only in the Express backend. The frontend may trigger
   batch creation/result polling and display safe status fields, but must never
   receive SPX app or user secrets.

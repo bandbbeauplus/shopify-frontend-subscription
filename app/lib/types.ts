@@ -74,6 +74,13 @@ export interface Shipment {
   spx_tracking_updated_at: string | null;
   spx_actual_shipping_fee: string | null;
   spx_latest_actual_weight: string | null;
+  spx_epod_urls: string[];
+  spx_epop_urls: string[];
+  spx_epor_urls: string[];
+  spx_epooh_urls: string[];
+  spx_evidence_status: string | null;
+  spx_evidence_status_code_name: string | null;
+  spx_evidence_updated_at: string | null;
   google_drive_file_id: string | null;
   google_awb_url: string | null;
   google_sheet_row_number: number | null;

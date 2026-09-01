@@ -31,6 +31,8 @@ The current setup is intended for one store. The backend uses a shared API key a
 - Signed SPX API batch creation, tracking-result polling, and AWB retrieval
 - Live SPX tracking status received through the signed backend webhook and
   displayed beside the tracking number
+- Permanent SPX pickup, delivery, return, and handling proof links displayed
+  only in the authenticated shipment dashboard
 - Automatic SPX AWB archival in Google Drive and monitoring-row upsert in
   Google Sheets when the backend integration is configured
 - UAT-only approved address substitution that excludes real customer addresses

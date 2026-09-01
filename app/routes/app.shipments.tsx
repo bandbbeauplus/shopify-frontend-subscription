@@ -315,6 +315,23 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
   </div>;
 }
 
+function EvidenceLinks({ shipment }: { shipment: Shipment }) {
+  const groups = [
+    { label: "Pickup proof", urls: shipment.spx_epop_urls },
+    { label: "Delivery proof", urls: shipment.spx_epod_urls },
+    { label: "Return proof", urls: shipment.spx_epor_urls },
+    { label: "Handling proof", urls: shipment.spx_epooh_urls },
+  ].filter((group) => Array.isArray(group.urls) && group.urls.length > 0);
+  if (!groups.length) return null;
+  return <small>{groups.flatMap((group) => group.urls.map((url, index) => (
+    <span key={`${group.label}-${index}`}>
+      <a className={styles.textLink} href={url} rel="noreferrer" target="_blank">
+        {group.label}{group.urls.length > 1 ? ` ${index + 1}` : ""}
+      </a>{" "}
+    </span>
+  )))}</small>;
+}
+
 function ShipmentTable({ shipments, integration }: { shipments: Shipment[]; integration: IntegrationConfig }) {
   if (shipments.length === 0) {
     return <EmptyState title="No orders found">Adjust the filters or wait for the next Shopify order.</EmptyState>;
@@ -330,7 +347,7 @@ function ShipmentTable({ shipments, integration }: { shipments: Shipment[]; inte
       </td>
       <td>{formatDate(shipment.scheduled_ship_date)}</td>
       <td><StatusBadge status={shipment.warehouse_status} />{shipment.oms_order_reference ? <small>{shipment.oms_order_reference}</small> : null}</td>
-      <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href={shipment.spx_tracking_link || "https://spx.ph/track"} rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.spx_tracking_status ? <small>{shipment.spx_tracking_status}{shipment.spx_tracking_status_code ? ` (${shipment.spx_tracking_status_code})` : ""}</small> : null}{shipment.google_awb_url || shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">{shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}</a></small> : null}</td>
+      <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href={shipment.spx_tracking_link || "https://spx.ph/track"} rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.spx_tracking_status ? <small>{shipment.spx_tracking_status}{shipment.spx_tracking_status_code ? ` (${shipment.spx_tracking_status_code})` : ""}</small> : null}{shipment.google_awb_url || shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">{shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}</a></small> : null}<EvidenceLinks shipment={shipment} /></td>
       <td><StatusBadge status={shipment.shipment_status} /></td>
       <td><ShipmentActions shipment={shipment} integration={integration} /></td>
     </tr>)}</tbody>
