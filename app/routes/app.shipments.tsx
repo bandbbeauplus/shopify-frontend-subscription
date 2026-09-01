@@ -17,7 +17,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
   const incoming = new URL(request.url);
   const query = new URLSearchParams();
-  for (const key of ["status", "from", "to", "customer_email"]) {
+  for (const key of ["status", "kind", "from", "to", "customer_email"]) {
     const value = incoming.searchParams.get(key);
     if (value) query.set(key, value);
   }
@@ -315,9 +315,33 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
   </div>;
 }
 
+function ShipmentTable({ shipments, integration }: { shipments: Shipment[]; integration: IntegrationConfig }) {
+  if (shipments.length === 0) {
+    return <EmptyState title="No orders found">Adjust the filters or wait for the next Shopify order.</EmptyState>;
+  }
+  return <div className={styles.tableWrap}><table className={styles.table}>
+    <thead><tr><th>Customer</th><th>Shipment</th><th>Scheduled</th><th>Warehouse</th><th>SPX</th><th>Delivery</th><th>Action</th></tr></thead>
+    <tbody>{shipments.map((shipment) => <tr key={shipment.id}>
+      <td><strong>{shipment.customer_name}</strong><small>{shipment.customer_email}</small></td>
+      <td>
+        <strong>{shipment.shipment_kind === "ordinary" ? "One-time order" : `${shipment.shipment_number} of ${shipment.total_shipments}`}</strong>
+        <small>{shipment.order_name ? `${shipment.order_name} · ` : ""}{shipment.product_name}</small>
+        <small>{shipment.physical_box_count || 1} box{shipment.physical_box_count === 1 ? "" : "es"} · {Number(shipment.parcel_weight_kg || 0).toFixed(3)} kg</small>
+      </td>
+      <td>{formatDate(shipment.scheduled_ship_date)}</td>
+      <td><StatusBadge status={shipment.warehouse_status} />{shipment.oms_order_reference ? <small>{shipment.oms_order_reference}</small> : null}</td>
+      <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href={shipment.spx_tracking_link || "https://spx.ph/track"} rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.spx_tracking_status ? <small>{shipment.spx_tracking_status}{shipment.spx_tracking_status_code ? ` (${shipment.spx_tracking_status_code})` : ""}</small> : null}{shipment.google_awb_url || shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">{shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}</a></small> : null}</td>
+      <td><StatusBadge status={shipment.shipment_status} /></td>
+      <td><ShipmentActions shipment={shipment} integration={integration} /></td>
+    </tr>)}</tbody>
+  </table></div>;
+}
+
 export default function ShipmentsPage() {
   const { shipments, integration } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
+  const ordinaryOrders = shipments.filter((shipment) => shipment.shipment_kind === "ordinary");
+  const subscriptionDeliveries = shipments.filter((shipment) => shipment.shipment_kind !== "ordinary");
   const dueForExport = shipments.some(
     (shipment) => shipment.shipment_status === "pending" && shipment.warehouse_status === "packed" && !shipment.spx_tracking_number && shipment.scheduled_ship_date <= new Date().toISOString().slice(0, 10),
   );
@@ -348,6 +372,7 @@ export default function ShipmentsPage() {
       </div> : null}
       <Form className={styles.toolbar} method="get">
         <label className={styles.field}>Customer email<input name="customer_email" placeholder="Search email" type="search" /></label>
+        <label className={styles.field}>Order type<select defaultValue="" name="kind"><option value="">All order types</option><option value="ordinary">Ordinary orders</option><option value="subscription">Subscription deliveries</option></select></label>
         <label className={styles.field}>Status<select defaultValue="" name="status"><option value="">All statuses</option>{statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select></label>
         <label className={styles.field}>From<input name="from" type="date" /></label>
         <label className={styles.field}>To<input name="to" type="date" /></label>
@@ -355,20 +380,12 @@ export default function ShipmentsPage() {
       </Form>
       <p className={styles.summary}>{shipments.length} shipment{shipments.length === 1 ? "" : "s"} found</p>
       <section className={styles.panel}>
-        {shipments.length === 0 ? <EmptyState title="No shipments found">Adjust the filters or wait for the next Shopify order.</EmptyState> : (
-          <div className={styles.tableWrap}><table className={styles.table}>
-            <thead><tr><th>Customer</th><th>Shipment</th><th>Scheduled</th><th>Warehouse</th><th>SPX</th><th>Delivery</th><th>Action</th></tr></thead>
-            <tbody>{shipments.map((shipment) => <tr key={shipment.id}>
-              <td><strong>{shipment.customer_name}</strong><small>{shipment.customer_email}</small></td>
-              <td><strong>{shipment.shipment_number} of {shipment.total_shipments}</strong><small>{shipment.product_name}</small></td>
-              <td>{formatDate(shipment.scheduled_ship_date)}</td>
-              <td><StatusBadge status={shipment.warehouse_status} />{shipment.oms_order_reference ? <small>{shipment.oms_order_reference}</small> : null}</td>
-              <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href="https://spx.ph/track" rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.google_awb_url || shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">{shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}</a></small> : null}</td>
-              <td><StatusBadge status={shipment.shipment_status} /></td>
-              <td><ShipmentActions shipment={shipment} integration={integration} /></td>
-            </tr>)}</tbody>
-          </table></div>
-        )}
+        <div className={styles.panelHeading}><div><span className={styles.eyebrow}>SHOPIFY ORDERS</span><h2>Ordinary orders</h2></div><span>{ordinaryOrders.length}</span></div>
+        <ShipmentTable shipments={ordinaryOrders} integration={integration} />
+      </section>
+      <section className={styles.panel}>
+        <div className={styles.panelHeading}><div><span className={styles.eyebrow}>PREPAID PLANS</span><h2>Subscription deliveries</h2></div><span>{subscriptionDeliveries.length}</span></div>
+        <ShipmentTable shipments={subscriptionDeliveries} integration={integration} />
       </section>
     </s-page>
   );

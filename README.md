@@ -1,15 +1,24 @@
 # B&B BEAU+ Subscription Admin
 
-Shopify embedded React app for operating the prepaid B&B BEAU+ subscription program. It uses Shopify's React Router app framework for app installation, session-token authentication, App Bridge, and Polaris web components.
+Shopify embedded React app for operating B&B BEAU+ ordinary-order fulfillment
+and prepaid subscription deliveries. It uses Shopify's React Router app
+framework for app installation, session-token authentication, App Bridge, and
+Polaris web components.
 
 ## Current status
 
 This is an internal MVP. The Shopify admin flow, strict prepaid-plan detection,
 calendar-month schedule generation, SellerCraft/Anchanto preparation workflow,
-SPX OpenAPI UAT booking, Excel reconciliation, and manual fulfillment dashboard
-are implemented. SPX production pickup still requires Ninja Van's warehouse
-sender details and API 1.1 timeslot selection. SMS delivery uses a
-provider-specific example and must be verified before production use.
+SPX OpenAPI UAT booking, tracking, AWB generation, Excel reconciliation, and
+the manual fulfillment dashboard are implemented. A complete standalone SPX
+UAT order successfully reached the AWB PDF stage. SellerCraft/Anchanto order
+and cancellation synchronization have also been tested.
+
+Google Drive and Sheet synchronization is implemented but still needs the
+client's Google service-account and destination configuration plus one live UAT
+verification. SPX production pickup still requires live credentials,
+confirmation of the Cabuyao warehouse address hierarchy, and API 1.1 timeslot
+selection. Customer SMS is disabled because Shopify handles notifications.
 
 The current setup is intended for one store. The backend uses a shared API key and does not yet scope records by Shopify shop.
 
@@ -20,12 +29,16 @@ The current setup is intended for one store. The backend uses a shared API key a
 - Bulk SPX Excel-template download for pending shipments due today
 - SPX tracking confirmation after a mass-order Excel import
 - Signed SPX API batch creation, tracking-result polling, and AWB retrieval
+- Live SPX tracking status received through the signed backend webhook and
+  displayed beside the tracking number
 - Automatic SPX AWB archival in Google Drive and monitoring-row upsert in
   Google Sheets when the backend integration is configured
 - UAT-only approved address substitution that excludes real customer addresses
 - Optional Shopify fulfillment creation with SPX tracking
 - Retryable **Fulfill in Shopify** action for tracked, ready-to-ship shipments
 - Manual shipment status changes and SPX tracking links
+- Separate ordinary-order and subscription-delivery queues with physical box
+  count and calculated parcel weight
 - Subscription search and cancellation
 - Shipment 1 links the original Shopify checkout so SellerCraft does not receive
   a duplicate order
@@ -51,7 +64,8 @@ The browser never receives `SUBSCRIPTION_API_KEY`. Each app loader/action authen
 
 Requirements: Node.js 20.19+ or 22.12+ and a Shopify Partner app/development store. The npm scripts download Shopify CLI automatically when needed.
 
-1. Copy `.env.example` to `.env` and fill in the Shopify credentials.
+1. Create a local `.env` using the variables in the Environment table below
+   and fill in the Shopify credentials.
 2. Set the same long random value in frontend `SUBSCRIPTION_API_KEY` and backend `DASHBOARD_API_KEY`.
 3. Install and prepare the app:
 
@@ -94,7 +108,10 @@ The backend must define `DASHBOARD_API_KEY` with the exact same value before its
 - The backend recognizes a plan only when `variant_title` starts with
   `1-Month Plan`, `3-Month Plan`, `6-Month Plan`, or `12-Month Plan` (hyphen,
   en dash, and em dash are accepted). Variants such as `7 Sachets`,
-  `14 Sachets`, and `28 Sachets` are ordinary purchases and are ignored.
+  `14 Sachets`, and `28 Sachets` are ordinary purchases and do not create plans.
+- Ordinary products create one-time fulfillment rows and receive the same
+  packed, SPX booking, AWB, and Google monitoring controls as prepaid
+  deliveries.
 - SKU values are required for reliable SellerCraft/Anchanto product mapping and
   child-order variant resolution, but plan detection does not depend on SKU.
 - SellerCraft/Anchanto connection setup and test SKU mapping are handled with
@@ -130,10 +147,12 @@ revision.
 
 Before production deployment:
 
-1. Complete one UAT order through SPX API 1.4, 1.5, and 1.6. Before production,
-   obtain Ninja Van's sender address/phone and implement SPX API 1.1 pickup
-   timeslot selection. Keep Excel export as a fallback.
-2. Confirm SMS provider credentials and delivery behavior.
-3. Use strong, separate secrets for Shopify and the dashboard-to-backend connection.
-4. Decide whether the app is single-store or multi-store. Multi-store operation requires shop-aware data isolation in the backend.
-5. Add pagination, status-transition validation, webhook payment validation, and automated tests.
+1. Obtain and configure SPX production credentials and the production base URL.
+2. Confirm SPX's address hierarchy for the supplied Ninja Van Cabuyao warehouse
+   and implement SPX API 1.1 pickup timeslot selection. Keep Excel export as a fallback.
+3. Configure the client's Google service account, Drive folder, and monitoring
+   Sheet, then verify one complete UAT upload from the dashboard.
+4. Measure and configure final packed-parcel dimensions.
+5. Use strong, separate secrets for Shopify and the dashboard-to-backend connection.
+6. Decide whether the app is single-store or multi-store. Multi-store operation requires shop-aware data isolation in the backend.
+7. Add pagination, status-transition validation, webhook payment handling, and automated tests.

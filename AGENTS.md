@@ -44,6 +44,9 @@ documentation; do not add agent tooling as a project dependency.
   retry protection.
 - Orders tagged `bb_subscription_delivery` are generated child deliveries and
   must not create new subscriptions.
+- Ordinary Shopify variants create one-time fulfillment shipment rows. Keep
+  them visually separate from subscription deliveries while exposing the same
+  packed, SPX booking, AWB, and Google monitoring actions.
 - Shopify variant titles determine whether a product is a prepaid plan. Keep UI
   assumptions aligned with the backend's subscription-plan parser.
 

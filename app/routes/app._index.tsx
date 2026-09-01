@@ -47,7 +47,7 @@ export default function Dashboard() {
   const { due, metrics } = useLoaderData<typeof loader>();
 
   return (
-    <s-page heading="Subscription operations">
+    <s-page heading="Fulfillment operations">
       <s-button slot="primary-action" href="/app/shipments">
         Manage shipments
       </s-button>
@@ -55,8 +55,8 @@ export default function Dashboard() {
       <div className={styles.hero}>
         <div>
           <span className={styles.eyebrow}>B&amp;B BEAU+ / DAILY DESK</span>
-          <h2>Monthly care, shipped on time.</h2>
-          <p>Today’s fulfillment queue and subscription health in one place.</p>
+          <h2>Every order, shipped on time.</h2>
+          <p>Ordinary Shopify orders and scheduled subscription deliveries in one fulfillment queue.</p>
         </div>
         <div className={styles.heroDate}>
           <span>Today</span>
@@ -91,7 +91,7 @@ export default function Dashboard() {
                 {due.map((shipment) => (
                   <tr key={shipment.id}>
                     <td><strong>{shipment.customer_name}</strong><small>{shipment.customer_email}</small></td>
-                    <td>{shipment.shipment_number} of {shipment.total_shipments}<small>{shipment.product_name}</small></td>
+                    <td>{shipment.shipment_kind === "ordinary" ? "One-time order" : `${shipment.shipment_number} of ${shipment.total_shipments}`}<small>{shipment.product_name}</small></td>
                     <td>{formatDate(shipment.scheduled_ship_date)}</td>
                     <td><StatusBadge status={shipment.shipment_status} /></td>
                   </tr>

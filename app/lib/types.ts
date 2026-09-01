@@ -33,17 +33,30 @@ export interface ShippingAddress {
 
 export interface Shipment {
   id: number;
-  subscription_id: number;
+  subscription_id: number | null;
+  shipment_kind: "subscription" | "ordinary";
   order_id: string;
+  order_name: string | null;
   customer_id: string | null;
   customer_name: string;
   customer_email: string;
   customer_phone: string | null;
   shipping_address: ShippingAddress | null;
   product_name: string;
+  variant_title: string | null;
   product_sku: string | null;
   product_variant_id: string | null;
   product_quantity: number;
+  line_items: Array<{
+    name: string;
+    title?: string;
+    variant_title?: string;
+    sku: string | null;
+    quantity: number;
+  }>;
+  order_total_price: string | null;
+  physical_box_count: number;
+  parcel_weight_kg: number;
   shipment_number: number;
   total_shipments: number;
   scheduled_ship_date: string;
@@ -54,6 +67,13 @@ export interface Shipment {
   spx_booking_status: string | null;
   spx_error: string | null;
   spx_awb_url: string | null;
+  spx_tracking_status: string | null;
+  spx_tracking_status_code: string | null;
+  spx_tracking_message: string | null;
+  spx_tracking_link: string | null;
+  spx_tracking_updated_at: string | null;
+  spx_actual_shipping_fee: string | null;
+  spx_latest_actual_weight: string | null;
   google_drive_file_id: string | null;
   google_awb_url: string | null;
   google_sheet_row_number: number | null;
