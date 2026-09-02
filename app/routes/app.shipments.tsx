@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useId, type ReactNode } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { Form, useFetcher, useLoaderData, useNavigation } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -219,6 +219,21 @@ function friendlySpxStatus(status?: string | null) {
   return labels[status || "not_created"] || String(status || "not_created").replaceAll("_", " ");
 }
 
+function InfoTooltip({ label, tone = "info" }: { label: string; tone?: "info" | "success" | "warning" }) {
+  const tooltipId = useId();
+  return <span className={styles.tooltip}>
+    <button
+      aria-describedby={tooltipId}
+      aria-label={label}
+      className={`${styles.tooltipButton} ${styles[`tooltipButton_${tone}`]}`}
+      type="button"
+    >
+      {tone === "success" ? "✓" : tone === "warning" ? "!" : "i"}
+    </button>
+    <span className={styles.tooltipContent} id={tooltipId} role="tooltip">{label}</span>
+  </span>;
+}
+
 function ShipmentActions({ shipment, integration }: { shipment: Shipment; integration: IntegrationConfig }) {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
@@ -232,7 +247,10 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
     ? shipment.google_awb_sync_status === "synced" && Boolean(shipment.google_awb_url)
     : Boolean(shipment.spx_awb_url) || integration.oms_mode === "mock";
   if (!isDue && shipment.warehouse_status === "not_sent") {
-    return <small>Scheduled for {formatDate(shipment.scheduled_ship_date)}</small>;
+    return <div className={styles.waitingAction}>
+      <span>Waiting</span>
+      <InfoTooltip label={`This delivery is scheduled for ${formatDate(shipment.scheduled_ship_date)}.`} />
+    </div>;
   }
 
   if ((shipment.warehouse_status === "not_sent" || shipment.warehouse_status === "failed") && shipment.shipment_status === "pending") {
@@ -289,9 +307,12 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
       </WorkflowStep>
     ) : null}
     {shipment.google_awb_sync_status === "synced" ? (
-      <div className={styles.workflowComplete}>
-        <span aria-hidden="true">✓</span>
-        <small>AWB saved in Drive and Google Sheet{shipment.google_sheet_row_number ? ` (row ${shipment.google_sheet_row_number})` : ""}.</small>
+      <div className={styles.actionNotice}>
+        <span>Google saved</span>
+        <InfoTooltip
+          label={`AWB saved in Drive and Google Sheet${shipment.google_sheet_row_number ? ` (row ${shipment.google_sheet_row_number})` : ""}.`}
+          tone="success"
+        />
       </div>
     ) : null}
     {shipment.warehouse_status === "packed" && shipment.spx_tracking_number && awbReadyForWarehouse ? (
@@ -310,15 +331,23 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
         <button className={styles.button} disabled={busy} type="submit">Fulfill in Shopify</button>
       </fetcher.Form>
     ) : null}
-    {shipment.warehouse_status === "awb_sent" && shipment.total_shipments > 1 && shipment.shipment_number < shipment.total_shipments ? <small>Shopify fulfillment remains open until the final scheduled shipment.</small> : null}
-    <fetcher.Form className={styles.tableActions} method="post">
-        <input type="hidden" name="id" value={shipment.id} />
-        <input type="hidden" name="intent" value="update_status" />
-        <select aria-label={`Status for shipment ${shipment.id}`} defaultValue={shipment.shipment_status} name="status">
-          {statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
-        </select>
-        <button className={styles.buttonSecondary} disabled={busy} type="submit">Save</button>
-      </fetcher.Form>
+    {shipment.warehouse_status === "awb_sent" && shipment.total_shipments > 1 && shipment.shipment_number < shipment.total_shipments ? (
+      <div className={styles.actionNotice}>
+        <span>Plan active</span>
+        <InfoTooltip label="Shopify fulfillment remains open until the final scheduled shipment." tone="warning" />
+      </div>
+    ) : null}
+    <details className={styles.advancedAction}>
+      <summary>Update delivery status</summary>
+      <fetcher.Form className={styles.tableActions} method="post">
+          <input type="hidden" name="id" value={shipment.id} />
+          <input type="hidden" name="intent" value="update_status" />
+          <select aria-label={`Status for shipment ${shipment.id}`} defaultValue={shipment.shipment_status} name="status">
+            {statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
+          </select>
+          <button className={styles.buttonSecondary} disabled={busy} type="submit">Save</button>
+        </fetcher.Form>
+    </details>
   </div>;
 }
 
@@ -344,7 +373,16 @@ function ShipmentTable({ shipments, integration }: { shipments: Shipment[]; inte
     return <EmptyState title="No orders found">Adjust the filters or wait for the next Shopify order.</EmptyState>;
   }
   return <div className={styles.tableWrap}><table className={styles.table}>
-    <thead><tr><th>Customer</th><th>Shipment</th><th>Scheduled</th><th>Warehouse</th><th>SPX</th><th>Delivery</th><th>Action</th></tr></thead>
+    <colgroup>
+      <col className={styles.colCustomer} />
+      <col className={styles.colShipment} />
+      <col className={styles.colScheduled} />
+      <col className={styles.colWarehouse} />
+      <col className={styles.colSpx} />
+      <col className={styles.colDelivery} />
+      <col className={styles.colAction} />
+    </colgroup>
+    <thead><tr><th>Customer</th><th>Shipment</th><th>Scheduled</th><th>Warehouse</th><th>SPX</th><th>Delivery</th><th className={styles.stickyAction}>Action</th></tr></thead>
     <tbody>{shipments.map((shipment) => <tr key={shipment.id}>
       <td><strong>{shipment.customer_name}</strong><small>{shipment.customer_email}</small></td>
       <td>
@@ -352,11 +390,11 @@ function ShipmentTable({ shipments, integration }: { shipments: Shipment[]; inte
         <small>{shipment.order_name ? `${shipment.order_name} · ` : ""}{shipment.product_name}</small>
         <small>{shipment.physical_box_count || 1} box{shipment.physical_box_count === 1 ? "" : "es"} · {Number(shipment.parcel_weight_kg || 0).toFixed(3)} kg</small>
       </td>
-      <td>{formatDate(shipment.scheduled_ship_date)}</td>
+      <td className={styles.scheduleDate}><time dateTime={shipment.scheduled_ship_date}>{formatDate(shipment.scheduled_ship_date)}</time></td>
       <td><StatusBadge status={shipment.warehouse_status} />{shipment.oms_order_reference ? <small>{shipment.oms_order_reference}</small> : null}</td>
       <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href={shipment.spx_tracking_link || "https://spx.ph/track"} rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.spx_tracking_status ? <small>{shipment.spx_tracking_status}{shipment.spx_tracking_status_code ? ` (${shipment.spx_tracking_status_code})` : ""}</small> : null}{shipment.google_awb_url || shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">{shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}</a></small> : null}<EvidenceLinks shipment={shipment} /></td>
       <td><StatusBadge status={shipment.shipment_status} /></td>
-      <td><ShipmentActions shipment={shipment} integration={integration} /></td>
+      <td className={styles.stickyAction}><ShipmentActions shipment={shipment} integration={integration} /></td>
     </tr>)}</tbody>
   </table></div>;
 }
