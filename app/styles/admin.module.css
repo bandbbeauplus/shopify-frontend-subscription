@@ -75,6 +75,11 @@
 .table tbody tr:hover td { background: #fffaf5; }
 .table td strong, .table td small { display: block; }
 .table td small { max-width: 260px; margin-top: 4px; color: #8c766a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spxCell { overflow: visible; }
+.awbLink { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.spxCell .tooltipContent { right: auto; left: calc(100% + 8px); transform: translate(-4px, -50%); }
+.spxCell .tooltipContent::after { right: 100%; left: auto; border-right-color: #30241e; border-left-color: transparent; }
+.spxCell .tooltip:hover .tooltipContent, .spxCell .tooltip:focus-within .tooltipContent { transform: translate(0, -50%); }
 .scheduleDate { color: #33251d; font-weight: 700; white-space: nowrap; }
 .stickyAction { position: sticky; z-index: 3; right: 0; border-left: 1px solid #f1dfcf; box-shadow: -12px 0 18px -18px rgba(61, 37, 20, .65); }
 .table th.stickyAction { z-index: 5; background: #fff1e5; }
@@ -94,8 +99,7 @@
 .workflowComplete { display: flex; gap: 7px; align-items: center; padding: 10px 12px; border-radius: 10px; color: #226044; background: #e7f5ec; }
 .workflowComplete span { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; color: white; background: #2f7a59; font-weight: 900; }
 .workflowComplete small { margin: 0 !important; color: inherit !important; white-space: normal !important; }
-.waitingAction, .actionNotice { display: flex; gap: 7px; align-items: center; width: max-content; max-width: 100%; color: #765d4e; font-size: 11px; font-weight: 800; }
-.actionNotice { padding: 7px 9px; border-radius: 9px; color: #315f49; background: #eaf5ee; }
+.waitingAction { display: flex; gap: 7px; align-items: center; width: max-content; max-width: 100%; color: #765d4e; font-size: 11px; font-weight: 800; }
 .tooltip { position: relative; display: inline-flex; flex: 0 0 auto; }
 .tooltipButton { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; color: #765d4e; background: #eee6df; font: inherit; font-size: 11px; font-weight: 900; cursor: help; }
 .tooltipButton_success { color: #fff; background: #34805d; }

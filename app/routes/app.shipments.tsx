@@ -306,15 +306,6 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
         <small className={styles.dangerText}>Enable Google AWB integration on the backend to archive this PDF in Drive and add it to the monitoring Sheet.</small>
       </WorkflowStep>
     ) : null}
-    {shipment.google_awb_sync_status === "synced" ? (
-      <div className={styles.actionNotice}>
-        <span>Google saved</span>
-        <InfoTooltip
-          label={`AWB saved in Drive and Google Sheet${shipment.google_sheet_row_number ? ` (row ${shipment.google_sheet_row_number})` : ""}.`}
-          tone="success"
-        />
-      </div>
-    ) : null}
     {shipment.warehouse_status === "packed" && shipment.spx_tracking_number && awbReadyForWarehouse ? (
       <WorkflowButton
         id={shipment.id}
@@ -330,12 +321,6 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
         <input type="hidden" name="intent" value="fulfill_shopify" />
         <button className={styles.button} disabled={busy} type="submit">Fulfill in Shopify</button>
       </fetcher.Form>
-    ) : null}
-    {shipment.warehouse_status === "awb_sent" && shipment.total_shipments > 1 && shipment.shipment_number < shipment.total_shipments ? (
-      <div className={styles.actionNotice}>
-        <span>Plan active</span>
-        <InfoTooltip label="Shopify fulfillment remains open until the final scheduled shipment." tone="warning" />
-      </div>
     ) : null}
     <details className={styles.advancedAction}>
       <summary>Update delivery status</summary>
@@ -392,7 +377,17 @@ function ShipmentTable({ shipments, integration }: { shipments: Shipment[]; inte
       </td>
       <td className={styles.scheduleDate}><time dateTime={shipment.scheduled_ship_date}>{formatDate(shipment.scheduled_ship_date)}</time></td>
       <td><StatusBadge status={shipment.warehouse_status} />{shipment.oms_order_reference ? <small>{shipment.oms_order_reference}</small> : null}</td>
-      <td>{shipment.spx_tracking_number ? <a className={styles.textLink} href={shipment.spx_tracking_link || "https://spx.ph/track"} rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}{shipment.spx_tracking_status ? <small>{shipment.spx_tracking_status}{shipment.spx_tracking_status_code ? ` (${shipment.spx_tracking_status_code})` : ""}</small> : null}{shipment.google_awb_url || shipment.spx_awb_url ? <small><a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">{shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}</a></small> : null}<EvidenceLinks shipment={shipment} /></td>
+      <td className={styles.spxCell}>
+        {shipment.spx_tracking_number ? <a className={styles.textLink} href={shipment.spx_tracking_link || "https://spx.ph/track"} rel="noreferrer" target="_blank">{shipment.spx_tracking_number}</a> : "Not booked"}
+        {shipment.spx_tracking_status ? <small>{shipment.spx_tracking_status}{shipment.spx_tracking_status_code ? ` (${shipment.spx_tracking_status_code})` : ""}</small> : null}
+        {shipment.google_awb_url || shipment.spx_awb_url ? <div className={styles.awbLink}>
+          <a className={styles.textLink} href={shipment.google_awb_url || shipment.spx_awb_url || "#"} rel="noreferrer" target="_blank">
+            {shipment.google_awb_url ? "AWB in Drive" : "Temporary AWB PDF"}
+          </a>
+          {shipment.google_awb_sync_status === "synced" ? <InfoTooltip label={`AWB saved in Drive and Google Sheet${shipment.google_sheet_row_number ? ` (row ${shipment.google_sheet_row_number})` : ""}.`} tone="success" /> : null}
+        </div> : null}
+        <EvidenceLinks shipment={shipment} />
+      </td>
       <td><StatusBadge status={shipment.shipment_status} /></td>
       <td className={styles.stickyAction}><ShipmentActions shipment={shipment} integration={integration} /></td>
     </tr>)}</tbody>
