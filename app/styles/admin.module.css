@@ -70,6 +70,18 @@
 .tableActions { display: flex; gap: 7px; align-items: center; }
 .tableActions select { height: 36px; border: 1px solid #ead3c1; border-radius: 9px; color: #2c211b; background: #fffaf4; }
 .confirmStack { display: grid; min-width: 230px; gap: 8px; }
+.workflowAction { display: grid; gap: 6px; }
+.workflowAction form, .workflowAction button { width: 100%; }
+.workflowCard { display: grid; min-width: 250px; gap: 8px; padding: 12px; border: 1px solid #f1d9c5; border-radius: 12px; background: #fffaf4; }
+.workflowCard > strong { color: #39271d; font-size: 13px; }
+.stepLabel { width: max-content; padding: 4px 7px; border-radius: 999px; color: #9f4300; background: #ffe8d4; font-size: 9px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.progressText { color: #735f53; line-height: 1.35; white-space: normal !important; }
+.successText { color: #226044 !important; line-height: 1.35; white-space: normal !important; }
+.workflowComplete { display: flex; gap: 7px; align-items: center; padding: 10px 12px; border-radius: 10px; color: #226044; background: #e7f5ec; }
+.workflowComplete span { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; color: white; background: #2f7a59; font-weight: 900; }
+.workflowComplete small { margin: 0 !important; color: inherit !important; white-space: normal !important; }
+.spinner { width: 13px; height: 13px; margin-right: 8px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .confirmForm { display: grid; gap: 7px; padding-top: 8px; border-top: 1px solid #f1dfcf; }
 .confirmForm > input { height: 36px; padding: 0 10px; border: 1px solid #ead3c1; border-radius: 9px; color: #2c211b; background: #fffaf4; box-sizing: border-box; }
 .confirmForm > small { color: #8c766a; line-height: 1.35; }

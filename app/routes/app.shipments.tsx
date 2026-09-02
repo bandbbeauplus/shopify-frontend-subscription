@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { Form, useFetcher, useLoaderData, useNavigation } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -165,53 +165,58 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   throw new Response("Unknown action", { status: 400 });
 };
 
-function XlsxDownloadButton({ id, label }: { id?: number; label: string }) {
-  const fetcher = useFetcher<typeof action>();
-  const shopify = useAppBridge();
-  const busy = fetcher.state !== "idle";
-
-  useEffect(() => {
-    const data = fetcher.data;
-    if (!data || !("workbook" in data) || !data.workbook) return;
-
-    const binary = atob(data.workbook);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = data.filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    shopify.toast.show("SPX Excel file downloaded");
-  }, [fetcher.data, shopify]);
-
-  return (
-    <fetcher.Form method="post">
-      {id ? <input type="hidden" name="id" value={id} /> : null}
-      <input type="hidden" name="intent" value={id ? "download_spx_xlsx" : "download_spx_bulk"} />
-      <button className={styles.button} disabled={busy} type="submit">
-        {busy ? "Preparing Excel..." : label}
-      </button>
-    </fetcher.Form>
-  );
-}
-
-function WorkflowButton({ id, intent, label }: { id: number; intent: string; label: string }) {
+function WorkflowButton({
+  id,
+  intent,
+  label,
+  pendingLabel = "Working...",
+}: {
+  id: number;
+  intent: string;
+  label: string;
+  pendingLabel?: string;
+}) {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   const busy = fetcher.state !== "idle";
   useEffect(() => {
     if (fetcher.data?.message) shopify.toast.show(fetcher.data.message);
   }, [fetcher.data, shopify]);
-  return <fetcher.Form method="post">
-    <input type="hidden" name="id" value={id} />
-    <input type="hidden" name="intent" value={intent} />
-    <button className={styles.button} disabled={busy} type="submit">{busy ? "Working..." : label}</button>
-  </fetcher.Form>;
+  return <div className={styles.workflowAction}>
+    <fetcher.Form method="post">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="intent" value={intent} />
+      <button className={styles.button} disabled={busy} type="submit">
+        {busy ? <><span className={styles.spinner} aria-hidden="true" />{pendingLabel}</> : label}
+      </button>
+    </fetcher.Form>
+    <div aria-live="polite">
+      {busy ? <small className={styles.progressText}>Please wait. This page will update automatically.</small> : null}
+      {!busy && fetcher.data?.message ? <small className={fetcher.data.ok ? styles.successText : styles.dangerText}>{fetcher.data.message}</small> : null}
+    </div>
+  </div>;
+}
+
+function WorkflowStep({ number, title, children }: { number: number; title: string; children: ReactNode }) {
+  return <div className={styles.workflowCard}>
+    <span className={styles.stepLabel}>Step {number} of 3</span>
+    <strong>{title}</strong>
+    {children}
+  </div>;
+}
+
+function friendlySpxStatus(status?: string | null) {
+  const labels: Record<string, string> = {
+    not_created: "Ready to create",
+    creating: "Submitting to SPX",
+    submitted: "Order submitted; tracking is being generated",
+    processing: "SPX is generating the tracking number",
+    created: "Tracking is ready; AWB is being generated",
+    awb_processing: "SPX is generating the AWB PDF",
+    ready: "SPX tracking and AWB are ready",
+    failed: "SPX setup needs attention",
+  };
+  return labels[status || "not_created"] || String(status || "not_created").replaceAll("_", " ");
 }
 
 function ShipmentActions({ shipment, integration }: { shipment: Shipment; integration: IntegrationConfig }) {
@@ -246,46 +251,48 @@ function ShipmentActions({ shipment, integration }: { shipment: Shipment; integr
   }
 
   if (shipment.warehouse_status === "submitted" || shipment.warehouse_status === "picking") {
-    return <div className={styles.confirmStack}>
+    return <WorkflowStep number={1} title="Wait for Ninja Van to pack">
       {integration.oms_mode === "manual"
-        ? <WorkflowButton id={shipment.id} intent="mark_packed" label="Confirm Ninja Van packed" />
+        ? <WorkflowButton id={shipment.id} intent="mark_packed" label="Confirm parcel is packed" pendingLabel="Saving packed status..." />
         : <WorkflowButton id={shipment.id} intent="sync_oms" label={integration.oms_mode === "mock" ? "Advance mock status" : "Check warehouse status"} />}
-      <small>SPX becomes available after the parcel is packed.</small>
-    </div>;
+      <small>Click only after Ninja Van confirms that this parcel is physically packed.</small>
+    </WorkflowStep>;
   }
 
   if (shipment.warehouse_status === "packed" && !shipment.spx_tracking_number) {
-    return <div className={styles.confirmStack}>
+    return <WorkflowStep number={2} title="Create the SPX shipping label">
       {integration.spx_mode === "api" && integration.spx_configured ? (
         shipment.spx_batch_no
-          ? <WorkflowButton id={shipment.id} intent="sync_spx" label="Check SPX order result" />
-          : <WorkflowButton id={shipment.id} intent="create_spx_api" label={integration.spx_environment === "uat" ? "Create SPX UAT order" : "Create SPX order"} />
-      ) : null}
-      {shipment.spx_booking_status ? <small>API status: {shipment.spx_booking_status.replaceAll("_", " ")}</small> : null}
+          ? <WorkflowButton id={shipment.id} intent="sync_spx" label="Continue SPX label setup" pendingLabel="Checking SPX result..." />
+          : <WorkflowButton id={shipment.id} intent="create_spx_api" label={integration.spx_environment === "uat" ? "Create SPX UAT label" : "Create SPX shipping label"} pendingLabel="Submitting to SPX..." />
+      ) : <small className={styles.dangerText}>SPX API credentials are not configured on the backend.</small>}
+      <small className={styles.progressText}>{friendlySpxStatus(shipment.spx_booking_status)}</small>
       {shipment.spx_error ? <small className={styles.dangerText}>{shipment.spx_error}</small> : null}
-      <XlsxDownloadButton id={shipment.id} label="Download SPX Excel" />
-      <fetcher.Form className={styles.confirmForm} method="post">
-        <input type="hidden" name="id" value={shipment.id} />
-        <input type="hidden" name="order_id" value={shipment.order_id} />
-        <input type="hidden" name="intent" value="confirm_spx" />
-        <input aria-label={`SPX tracking for shipment ${shipment.id}`} name="tracking_number" placeholder="SPX tracking number" required />
-        <input aria-label={`AWB PDF URL for shipment ${shipment.id}`} name="awb_url" placeholder={integration.oms_mode === "mock" ? "AWB PDF URL (optional in mock)" : "HTTPS AWB PDF URL"} required={integration.oms_mode === "api"} type="url" />
-        <button className={styles.buttonSecondary} disabled={busy} type="submit">Record SPX booking</button>
-      </fetcher.Form>
-    </div>;
+    </WorkflowStep>;
   }
   return <div className={styles.confirmStack}>
     {shipment.spx_tracking_number && !shipment.spx_awb_url && shipment.spx_batch_no && integration.spx_mode === "api" ? (
-      <WorkflowButton id={shipment.id} intent="sync_spx" label="Check SPX AWB" />
+      <WorkflowStep number={2} title="SPX is preparing the AWB">
+        <WorkflowButton id={shipment.id} intent="sync_spx" label="Continue: Get AWB PDF" pendingLabel="Getting AWB from SPX..." />
+        <small className={styles.progressText}>{friendlySpxStatus(shipment.spx_booking_status)}</small>
+      </WorkflowStep>
     ) : null}
     {shipment.spx_awb_url && integration.google_awb_configured && shipment.google_awb_sync_status !== "synced" ? (
-      <div className={styles.confirmStack}>
-        <WorkflowButton id={shipment.id} intent="sync_awb_google" label={shipment.google_awb_sync_status === "failed" ? "Retry Google AWB sync" : "Sync AWB to Google"} />
+      <WorkflowStep number={3} title="Save AWB for Ninja Van">
+        <WorkflowButton id={shipment.id} intent="sync_awb_google" label={shipment.google_awb_sync_status === "failed" ? "Retry Drive & Sheet sync" : "Save AWB to Drive & Sheet"} pendingLabel="Uploading AWB to Google..." />
         {shipment.google_awb_error ? <small className={styles.dangerText}>{shipment.google_awb_error}</small> : null}
-      </div>
+      </WorkflowStep>
+    ) : null}
+    {shipment.spx_awb_url && !integration.google_awb_configured ? (
+      <WorkflowStep number={3} title="Google AWB sync is turned off">
+        <small className={styles.dangerText}>Enable Google AWB integration on the backend to archive this PDF in Drive and add it to the monitoring Sheet.</small>
+      </WorkflowStep>
     ) : null}
     {shipment.google_awb_sync_status === "synced" ? (
-      <small>AWB saved in Drive and Google Sheet{shipment.google_sheet_row_number ? ` (row ${shipment.google_sheet_row_number})` : ""}.</small>
+      <div className={styles.workflowComplete}>
+        <span aria-hidden="true">✓</span>
+        <small>AWB saved in Drive and Google Sheet{shipment.google_sheet_row_number ? ` (row ${shipment.google_sheet_row_number})` : ""}.</small>
+      </div>
     ) : null}
     {shipment.warehouse_status === "packed" && shipment.spx_tracking_number && awbReadyForWarehouse ? (
       <WorkflowButton
@@ -359,9 +366,6 @@ export default function ShipmentsPage() {
   const navigation = useNavigation();
   const ordinaryOrders = shipments.filter((shipment) => shipment.shipment_kind === "ordinary");
   const subscriptionDeliveries = shipments.filter((shipment) => shipment.shipment_kind !== "ordinary");
-  const dueForExport = shipments.some(
-    (shipment) => shipment.shipment_status === "pending" && shipment.warehouse_status === "packed" && !shipment.spx_tracking_number && shipment.scheduled_ship_date <= new Date().toISOString().slice(0, 10),
-  );
   return (
     <s-page heading="Shipments">
       {integration.oms_mode === "mock" ? <div className={styles.infoBar}>
@@ -374,7 +378,7 @@ export default function ShipmentsPage() {
       </div> : null}
       {integration.spx_mode === "api" && !integration.spx_configured ? <div className={styles.infoBar}>
         <strong>SPX API needs configuration</strong>
-        <span>Add the SPX app and user credentials to the backend environment. Excel export remains available as a fallback.</span>
+        <span>Add the SPX app and user credentials to the backend environment.</span>
       </div> : null}
       {integration.google_awb_mode === "api" && !integration.google_awb_configured ? <div className={styles.infoBar}>
         <strong>Google AWB sync needs configuration</strong>
@@ -383,9 +387,6 @@ export default function ShipmentsPage() {
       {integration.google_awb_configured ? <div className={styles.infoBar}>
         <strong>Automatic AWB monitoring enabled</strong>
         <span>When SPX finishes an AWB, the backend archives its PDF in Google Drive and adds or updates the shipment row in Google Sheets.</span>
-      </div> : null}
-      {dueForExport ? <div className={styles.exportBar}>
-        <XlsxDownloadButton label="Download due shipments Excel" />
       </div> : null}
       <Form className={styles.toolbar} method="get">
         <label className={styles.field}>Customer email<input name="customer_email" placeholder="Search email" type="search" /></label>

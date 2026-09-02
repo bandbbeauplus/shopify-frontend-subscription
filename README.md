@@ -14,9 +14,9 @@ the manual fulfillment dashboard are implemented. A complete standalone SPX
 UAT order successfully reached the AWB PDF stage. SellerCraft/Anchanto order
 and cancellation synchronization have also been tested.
 
-Google Drive and Sheet synchronization is implemented but still needs the
-client's Google service-account and destination configuration plus one live UAT
-verification. SPX production pickup still requires live credentials,
+Google Drive and Sheet synchronization is implemented. The production backend
+must have `GOOGLE_AWB_MODE=api` and the service-account, Drive folder, and Sheet
+environment values configured before AWBs are archived. SPX production pickup still requires live credentials,
 confirmation of the Cabuyao warehouse address hierarchy, and API 1.1 timeslot
 selection. Customer SMS is disabled because Shopify handles notifications.
 
@@ -26,8 +26,8 @@ The current setup is intended for one store. The backend uses a shared API key a
 
 - Operations overview with due, upcoming, active, and delivered totals
 - Shipment search by email, status, and date range
-- Bulk SPX Excel-template download for pending shipments due today
-- SPX tracking confirmation after a mass-order Excel import
+- SPX Excel export and manual tracking confirmation remain backend fallbacks;
+  the standard shipment interface uses the direct SPX API workflow only
 - Signed SPX API batch creation, tracking-result polling, and AWB retrieval
 - Live SPX tracking status received through the signed backend webhook and
   displayed beside the tracking number
@@ -35,6 +35,8 @@ The current setup is intended for one store. The backend uses a shared API key a
   only in the authenticated shipment dashboard
 - Automatic SPX AWB archival in Google Drive and monitoring-row upsert in
   Google Sheets when the backend integration is configured
+- Numbered warehouse, SPX, and Google workflow cards with visible loading and
+  completion feedback
 - UAT-only approved address substitution that excludes real customer addresses
 - Optional Shopify fulfillment creation with SPX tracking
 - Retryable **Fulfill in Shopify** action for tracked, ready-to-ship shipments
